@@ -34,8 +34,9 @@ export default function AdminRoute({ children }) {
   }
 
   if (!isAdmin) {
-    // Don't reveal that an admin panel exists — silent redirect
-    return <Navigate to="/dashboard" replace />;
+    // SECURITY: Return 404 — don't hint that /admin exists but is restricted.
+    // A redirect to /dashboard signals "route exists, access denied" to attackers.
+    return <Navigate to="/404" replace />;
   }
 
   return children;

@@ -12,11 +12,12 @@
     "emulate": "VITE_USE_EMULATOR=true vite"
   },
   "dependencies": {
-    "firebase": "^10.14.1",
+    "firebase": "^10.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
     "react-markdown": "^9.0.1",
-    "react-router-dom": "^6.23.1"
+    "rehype-sanitize": "^6.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

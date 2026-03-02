@@ -17,6 +17,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import Navbar from "../components/layout/Navbar";
 import WriteupEditor from "../components/writeup/WriteupEditor";
 import "./ChallengeSolve.css";
@@ -289,7 +290,7 @@ export default function ChallengeSolve() {
                 <span className="solve-section-label">Mission Brief</span>
               </div>
               <div className="solve-markdown">
-                <ReactMarkdown>{challenge.description}</ReactMarkdown>
+                <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{challenge.description}</ReactMarkdown>
               </div>
             </section>
 

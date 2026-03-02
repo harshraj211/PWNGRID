@@ -20,6 +20,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
 import Navbar from "../components/layout/Navbar";
 import "./ContestSolve.css";
 
@@ -326,7 +327,7 @@ export default function ContestSolve() {
               </div>
 
               <div className="cs-markdown">
-                <ReactMarkdown>{activeChallenge.description}</ReactMarkdown>
+                <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{activeChallenge.description}</ReactMarkdown>
               </div>
 
               {/* Hint */}

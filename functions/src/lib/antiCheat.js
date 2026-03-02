@@ -4,17 +4,24 @@
  * All flagging decisions made here; actual DB writes happen in submitAnswer.js
  */
 
-/** Minimum solve time (seconds) before a hard challenge triggers suspicion */
+/** Minimum solve time (seconds) before flagging as suspicious.
+ *  These are soft flags only — a single fast solve is never hard-blocked.
+ *  Legitimate flow: user pre-solved on notepad, opens page, pastes answer.
+ *  Action only taken if user has MULTIPLE speed flags across different challenges.
+ */
 const SPEED_THRESHOLDS = {
-  easy: 5,
-  medium: 10,
-  hard: 15,
+  easy:   2,   // 2s — nearly impossible to be legitimate under this
+  medium: 4,
+  hard:   8,
 };
 
-/** Max attempts per challenge per rolling window */
+/** Max attempts per challenge per rolling window.
+ *  20 attempts / 5 min is CTF-friendly (typos, format guessing) while
+ *  still blocking automated brute-force (thousands/min).
+ */
 const RATE_LIMIT = {
-  maxAttempts: 5,
-  windowSeconds: 30 * 60, // 30 minutes
+  maxAttempts: 20,
+  windowSeconds: 5 * 60, // 5 minutes
 };
 
 /**

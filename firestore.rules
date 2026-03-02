@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Helpers ───────────────────────────────────────────────────────────────
     function isAuth()     { return request.auth != null; }
     function isOwner(uid) { return isAuth() && request.auth.uid == uid; }
     function isAdmin()    { return isAuth() && request.auth.token.role == 'admin'; }
@@ -9,6 +10,23 @@ service cloud.firestore {
     function isVerified() { return isAuth() && request.auth.token.email_verified == true; }
     function hasOnly(fields) { return request.resource.data.keys().hasOnly(fields); }
 
+    // SECURITY: Strict type + length validation for user-editable profile fields.
+    // Prevents DB bloat (10MB bio attack), frontend crashes (object-as-string),
+    // and stored XSS via oversized payloads.
+    function isValidProfileUpdate() {
+      let d = request.resource.data;
+      return (!d.keys().hasAny(['username'])    || (d.username is string    && d.username.size()    > 2  && d.username.size()    < 31))
+          && (!d.keys().hasAny(['displayName']) || (d.displayName is string && d.displayName.size() > 0  && d.displayName.size() < 51))
+          && (!d.keys().hasAny(['bio'])         || (d.bio is string         && d.bio.size()         < 501))
+          && (!d.keys().hasAny(['photoURL'])    || (d.photoURL is string    && d.photoURL.size()    < 2049))
+          && (!d.keys().hasAny(['presetAvatar'])|| (d.presetAvatar is string && d.presetAvatar.size() < 51))
+          && (!d.keys().hasAny(['country'])     || (d.country is string     && d.country.size()     < 51))
+          && (!d.keys().hasAny(['university'])  || (d.university is string  && d.university.size()  < 101))
+          && (!d.keys().hasAny(['website'])     || (d.website is string     && d.website.size()     < 201))
+          && (!d.keys().hasAny(['gender'])      || (d.gender is string      && d.gender.size()      < 21));
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
     match /users/{userId} {
       allow read:   if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId);
@@ -16,15 +34,18 @@ service cloud.firestore {
                        && hasOnly(['username', 'displayName', 'photoURL', 'bio',
                                    'gender', 'country', 'university', 'website',
                                    'presetAvatar', 'updatedAt'])
+                       && isValidProfileUpdate()
                     || isAdmin();
       allow delete: if false;
     }
 
+    // ── Public Profiles ───────────────────────────────────────────────────────
     match /publicProfiles/{userId} {
       allow read:  if true;
       allow write: if false;
     }
 
+    // ── Challenges ────────────────────────────────────────────────────────────
     match /challenges/{challengeId} {
       allow read: if isVerified()
                      && resource.data.isActive == true
@@ -42,6 +63,7 @@ service cloud.firestore {
       }
     }
 
+    // ── Submissions ───────────────────────────────────────────────────────────
     match /submissions/{submissionId} {
       allow read:   if isAuth() && resource.data.userId == request.auth.uid;
       allow read:   if isMod();
@@ -50,21 +72,25 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Active Sessions ───────────────────────────────────────────────────────
     match /activeSessions/{sessionId} {
       allow read:  if isAuth() && sessionId.matches(request.auth.uid + '_.*');
       allow write: if false;
     }
 
+    // ── Heatmap ───────────────────────────────────────────────────────────────
     match /heatmap/{userId}/years/{year} {
       allow read:  if isOwner(userId) || isAuth();
       allow write: if false;
     }
 
+    // ── Leaderboard ───────────────────────────────────────────────────────────
     match /leaderboard/{entry} {
       allow read:  if true;
       allow write: if false;
     }
 
+    // ── Contests ──────────────────────────────────────────────────────────────
     match /contests/{contestId} {
       allow read:  if isAuth();
       allow write: if isAdmin();
@@ -78,12 +104,14 @@ service cloud.firestore {
       }
     }
 
+    // ── Contest Submissions ───────────────────────────────────────────────────
     match /contestSubmissions/{submissionId} {
       allow read:  if isAuth() && resource.data.userId == request.auth.uid;
       allow read:  if isAdmin();
       allow write: if false;
     }
 
+    // ── Flags ─────────────────────────────────────────────────────────────────
     match /flags/{flagId} {
       allow read:   if isMod();
       allow create: if false;
@@ -91,11 +119,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Certifications ────────────────────────────────────────────────────────
     match /certifications/{certId} {
       allow read:  if true;
       allow write: if false;
     }
 
+    // ── Payments ──────────────────────────────────────────────────────────────
     match /payments/{paymentId} {
       allow read:  if isAuth() && resource.data.uid == request.auth.uid;
       allow read:  if isAdmin();
@@ -107,16 +137,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── Config ────────────────────────────────────────────────────────────────
     match /config/{docId} {
       allow read:  if isAuth();
       allow write: if isAdmin();
     }
 
+    // ── Admin Logs ────────────────────────────────────────────────────────────
     match /adminLogs/{logId} {
       allow read:  if isAdmin();
       allow write: if false;
     }
 
+    // ── Follows ───────────────────────────────────────────────────────────────
     match /follows/{followId} {
       allow read: if isAuth();
       allow create: if isAuth() && isVerified()
@@ -126,19 +159,31 @@ service cloud.firestore {
         && resource.data.followerId == request.auth.uid;
     }
 
+    // ── Badges ────────────────────────────────────────────────────────────────
     match /badges/{badgeId} {
       allow read:  if isAuth();
       allow write: if false;
     }
 
+    // ── Writeups ─────────────────────────────────────────────────────────────
+    // Validate content size to prevent DB bloat attacks
     match /writeups/{writeupId} {
       allow read:  if resource.data.isPublic == true || isOwner(resource.data.userId) || isMod();
       allow create: if isAuth() && isVerified()
-        && request.resource.data.userId == request.auth.uid;
-      allow update: if isOwner(resource.data.userId);
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() < 50001   // 50KB max writeup
+        && request.resource.data.title is string
+        && request.resource.data.title.size() < 201;
+      allow update: if isOwner(resource.data.userId)
+        && request.resource.data.content is string
+        && request.resource.data.content.size() < 50001
+        && request.resource.data.title is string
+        && request.resource.data.title.size() < 201;
       allow delete: if isOwner(resource.data.userId) || isAdmin();
     }
 
+    // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
