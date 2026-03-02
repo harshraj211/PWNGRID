@@ -62,11 +62,19 @@ exports.setCustomClaims = onCall({ enforceAppCheck: false }, async (request) => 
   }
 
   // ── Set custom claims ─────────────────────────────────────────────────
+  // SECURITY: Role is NOT read from Firestore userData here.
+  // An attacker could write role:"admin" to their Firestore doc and call this function.
+  // Instead: preserve the role already in the existing JWT token (set only by
+  // Admin SDK in privileged functions like adminSetRole), OR default to "user".
+  // This means role escalation requires a privileged Admin SDK call — never a
+  // client-writable Firestore field.
+  const existingClaims = (await auth.getUser(uid)).customClaims || {};
+  const safeRole = existingClaims.role || "user";  // trust existing JWT, not Firestore
+
   const claims = {
     plan: effectivePlan,
+    role: safeRole,
     ...(effectivePlan === "pro" && proExpiresAt ? { proExpiresAt } : {}),
-    // role claim (admin/mod) — include if set
-    ...(userData.role && userData.role !== "user" ? { role: userData.role } : {}),
   };
 
   await auth.setCustomUserClaims(uid, claims);
@@ -77,7 +85,7 @@ exports.setCustomClaims = onCall({ enforceAppCheck: false }, async (request) => 
   return {
     plan:          effectivePlan,
     proExpiresAt:  effectivePlan === "pro" ? proExpiresAt : null,
-    role:          userData.role || "user",
+    role:          safeRole,
     claimsUpdated: true,
   };
 });

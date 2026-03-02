@@ -101,3 +101,6 @@ exports.getAnalytics = require("./admin/getAnalytics");
 //                        and issues a verifiable cert doc if eligible
 // ────────────────────────────────────────────────────────────────────────────
 exports.checkCertEligibility = require("./certifications/checkCertEligibility");
+
+// Storage validation
+exports.validateUpload = require("./storage/validateUpload");

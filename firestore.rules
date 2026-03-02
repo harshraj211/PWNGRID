@@ -29,7 +29,24 @@ service cloud.firestore {
     // ── Users ─────────────────────────────────────────────────────────────────
     match /users/{userId} {
       allow read:   if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
+
+      // SECURITY: Enforce safe defaults on creation.
+      // An attacker bypassing the frontend could POST { role: "admin", plan: "pro", elo: 999999 }
+      // directly to Firestore. These checks ensure all sensitive fields are locked
+      // to their safe initial values. Profile creation is ALSO handled by the
+      // onUserCreated Cloud Function trigger — this is a defense-in-depth rule.
+      allow create: if isOwner(userId)
+                       && request.resource.data.role    == 'user'
+                       && request.resource.data.plan    == 'free'
+                       && request.resource.data.elo     == 0
+                       && request.resource.data.weeklyElo  == 0
+                       && request.resource.data.monthlyElo == 0
+                       && request.resource.data.isBanned   == false
+                       && request.resource.data.isFlagged  == false
+                       && request.resource.data.totalSolved == 0
+                       && request.resource.data.correctSubmissions == 0
+                       && request.resource.data.wrongSubmissions   == 0;
+
       allow update: if isOwner(userId) && isVerified()
                        && hasOnly(['username', 'displayName', 'photoURL', 'bio',
                                    'gender', 'country', 'university', 'website',
