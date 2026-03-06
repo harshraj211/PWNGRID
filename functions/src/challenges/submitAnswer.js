@@ -18,6 +18,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { Timestamp, FieldValue } = require("firebase-admin/firestore");
 
 // ── Lib imports (pure, portable) ──────────────────────────────────────────────
 const { calculateEloGain, calculateWrongAttemptDeduction } = require("../lib/calculateElo");
@@ -134,16 +135,21 @@ module.exports = functions.https.onCall(async (data, context) => {
     .collection("submissions")
     .where("userId", "==", userId)
     .where("challengeId", "==", challengeId)
-    .where("timestamp", ">=", admin.firestore.Timestamp.fromMillis(nowMs - 30 * 60 * 1000))
-    .orderBy("timestamp", "desc")
     .get();
 
-  const recentAttemptTimestamps = recentAttemptsSnap.docs.map(
+  // Filter in-memory for the 30-min window (avoids needing a separate composite index)
+  const windowMs = nowMs - 30 * 60 * 1000;
+  const recentDocs = recentAttemptsSnap.docs.filter(d => {
+    const ts = d.data().timestamp;
+    return ts && ts.toMillis() >= windowMs;
+  });
+
+  const recentAttemptTimestamps = recentDocs.map(
     (d) => d.data().timestamp.toMillis()
   );
 
   // Count wrong attempts this session (for ELO penalty)
-  const wrongAttemptsThisSession = recentAttemptsSnap.docs.filter(
+  const wrongAttemptsThisSession = recentDocs.filter(
     (d) => !d.data().isCorrect
   ).length;
 
@@ -176,7 +182,7 @@ module.exports = functions.https.onCall(async (data, context) => {
       challengeId,
       timeTaken,
       ip,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       reviewedBy: null,
       resolvedAt: null,
     });
@@ -189,9 +195,17 @@ module.exports = functions.https.onCall(async (data, context) => {
   }
 
   // ── 8. Verify answer ──────────────────────────────────────────────────────────
+  // Support both field names: answerHash (new) and flagHash (legacy)
+  const storedHash = challenge.answerHash || challenge.flagHash;
+  if (!storedHash) {
+    throw new functions.https.HttpsError(
+      "internal",
+      "Challenge answer hash is missing. Please contact an admin."
+    );
+  }
   const isCorrect = verifyAnswer(
     answer,
-    challenge.answerHash,
+    storedHash,
     challenge.answerNormalizationRules || {}
   );
 
@@ -214,18 +228,18 @@ module.exports = functions.https.onCall(async (data, context) => {
       hintUsed,
       ipAddress: ip,
       contestId,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
       isSuspicious: antiCheat.shouldFlag,
     });
 
     batch.update(userRef, {
       elo: newElo,
-      wrongSubmissions: admin.firestore.FieldValue.increment(1),
+      wrongSubmissions: FieldValue.increment(1),
     });
 
     // Update challenge attempt count
     batch.update(challengeRef, {
-      attemptCount: admin.firestore.FieldValue.increment(1),
+      attemptCount: FieldValue.increment(1),
     });
 
     await batch.commit();
@@ -302,32 +316,32 @@ module.exports = functions.https.onCall(async (data, context) => {
       eloChange: finalEloGain,
       wrongAttemptsBefore: wrongAttemptsThisSession,
       hintUsed, ipAddress: ip, contestId,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
       isSuspicious: antiCheat.shouldFlag,
       isPracticeRe_solve: alreadySolved,
     });
 
     // Update user
     const userUpdate = {
-      elo: admin.firestore.FieldValue.increment(finalEloGain),
-      weeklyElo: admin.firestore.FieldValue.increment(finalEloGain),
-      monthlyElo: admin.firestore.FieldValue.increment(finalEloGain),
-      correctSubmissions: admin.firestore.FieldValue.increment(1),
+      elo: FieldValue.increment(finalEloGain),
+      weeklyElo: FieldValue.increment(finalEloGain),
+      monthlyElo: FieldValue.increment(finalEloGain),
+      correctSubmissions: FieldValue.increment(1),
       lastActiveDate: streakResult.lastActiveDate,
       currentStreak: streakResult.currentStreak,
       maxStreak: streakResult.maxStreak,
     };
     if (!alreadySolved) {
-      userUpdate.totalSolved = admin.firestore.FieldValue.increment(1);
-      userUpdate[`solvedByDifficulty.${challenge.difficulty}`] = admin.firestore.FieldValue.increment(1);
+      userUpdate.totalSolved = FieldValue.increment(1);
+      userUpdate[`solvedByDifficulty.${challenge.difficulty}`] = FieldValue.increment(1);
     }
     tx.update(userRef, userUpdate);
 
     // Update challenge stats
     if (!alreadySolved) {
       tx.update(challengeRef, {
-        solveCount:  admin.firestore.FieldValue.increment(1),
-        attemptCount: admin.firestore.FieldValue.increment(1),
+        solveCount:  FieldValue.increment(1),
+        attemptCount: FieldValue.increment(1),
         avgSolveTime: newAvgSolveTime,
       });
     }
@@ -345,7 +359,7 @@ module.exports = functions.https.onCall(async (data, context) => {
       challengeId,
       isCorrect: true,
       timeTaken,
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: FieldValue.serverTimestamp(),
     }).catch((err) => console.error("Contest submission log failed:", err));
   }
 
@@ -420,12 +434,18 @@ async function checkAndAwardBadges(userId, solveContext) {
     .collection("submissions")
     .where("challengeId", "==", solveContext.challengeId)
     .where("isCorrect", "==", true)
-    .orderBy("timestamp", "asc")
-    .limit(1)
     .get();
 
   if (!firstBloodSnap.empty) {
-    const firstSolver = firstBloodSnap.docs[0].data().userId;
+    // Find the earliest correct submission in-memory
+    let earliestDoc = firstBloodSnap.docs[0];
+    for (const d of firstBloodSnap.docs) {
+      if (d.data().timestamp && earliestDoc.data().timestamp &&
+          d.data().timestamp.toMillis() < earliestDoc.data().timestamp.toMillis()) {
+        earliestDoc = d;
+      }
+    }
+    const firstSolver = earliestDoc.data().userId;
     if (firstSolver === userId && !currentBadges.includes("first_blood")) {
       newBadges.push("first_blood");
     }
@@ -434,7 +454,7 @@ async function checkAndAwardBadges(userId, solveContext) {
   // Award new badges if any
   if (newBadges.length > 0) {
     await userRef.update({
-      badges: admin.firestore.FieldValue.arrayUnion(...newBadges),
+      badges: FieldValue.arrayUnion(...newBadges),
     });
   }
 }

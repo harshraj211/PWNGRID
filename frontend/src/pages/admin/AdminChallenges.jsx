@@ -89,7 +89,7 @@ export default function AdminChallenges() {
       basePoints:  ch.basePoints  || 100,
       tags:        (ch.tags || []).join(", "),
       visibility:  ch.visibility  || "draft",
-      flag:        "",              // never pre-fill flag
+      flag:        ch.rawFlag     || "",  // Show saved flag to admin
       hints:       ch.hints?.length ? ch.hints : [""],
       timeLimit:   ch.timeLimit   || "",
       mediaType:   ch.mediaType   || "none",
@@ -160,7 +160,8 @@ export default function AdminChallenges() {
       };
 
       if (form.flag.trim()) {
-        data.flagHash = await hashAnswer(form.flag.trim().toLowerCase());
+        data.answerHash = await hashAnswer(form.flag.trim().toLowerCase());
+        data.rawFlag = form.flag.trim();  // Store raw flag so admin can view/edit later
       }
 
       if (modal === "create") {
@@ -379,11 +380,11 @@ export default function AdminChallenges() {
 
               {/* Flag */}
               <div className="ac-field">
-                <label>Flag {modal === "edit" ? "(leave blank to keep existing)" : "*"}</label>
-                <input className="ac-input ac-input--flag" type="password"
+                <label>Flag {modal === "edit" ? "(edit to change, or leave as-is to keep)" : "*"}</label>
+                <input className="ac-input ac-input--flag" type="text"
                   value={form.flag} onChange={e => setField("flag", e.target.value)}
                   placeholder={modal === "edit" ? "Enter new flag to update" : "flag{secret_answer}"} />
-                <span className="ac-hint">Stored as SHA-256 hash — never in plain text</span>
+                <span className="ac-hint">Stored as SHA-256 hash alongside raw value (admin-only visibility)</span>
               </div>
 
               {/* Hints */}

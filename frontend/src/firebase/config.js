@@ -68,12 +68,18 @@ export const functions = getFunctions(app, region);
 export const storage = getStorage(app);
 
 // ── Emulator suite ────────────────────────────────────────────────────────────
-// Set VITE_USE_EMULATOR=true in frontend/.env.local to activate.
+// Set VITE_USE_EMULATOR=true in frontend/.env.local to activate ALL emulators.
 // Run: firebase emulators:start --only auth,firestore,functions
 if (import.meta.env.VITE_USE_EMULATOR === "true") {
   console.info("[firebase/config] 🔧 Emulator mode — connecting to local Firebase emulators");
   connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
   connectFirestoreEmulator(db, "localhost", 8080);
+  connectFunctionsEmulator(functions, "localhost", 5001);
+} else if (import.meta.env.VITE_USE_FUNCTION_EMULATOR === "true") {
+  // Connect ONLY functions to emulator — keeps production Auth + Firestore.
+  // Useful when Blaze plan isn't enabled (can't deploy functions).
+  // Run: firebase emulators:start --only functions
+  console.info("[firebase/config] 🔧 Functions emulator mode — functions on localhost:5001, production Auth + Firestore");
   connectFunctionsEmulator(functions, "localhost", 5001);
 }
 

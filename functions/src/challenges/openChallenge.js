@@ -14,6 +14,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { Timestamp } = require("firebase-admin/firestore");
 
 // ── Init guard (safe to call multiple times across functions) ─────────────────
 if (!admin.apps.length) admin.initializeApp();
@@ -86,7 +87,7 @@ module.exports = functions.https.onCall(async (data, context) => {
       openTimestamp,
       expiresAt,
       hintUsed: false, // SECURITY: hint state tracked server-side only
-      expiresAtTimestamp: admin.firestore.Timestamp.fromMillis(expiresAt),
+      expiresAtTimestamp: Timestamp.fromMillis(expiresAt),
     });
 
   return {

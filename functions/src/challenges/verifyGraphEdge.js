@@ -19,6 +19,7 @@
 
 const functions = require("firebase-functions");
 const admin     = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -111,9 +112,9 @@ module.exports = functions.https.onCall(async (data, context) => {
     // Award partial ELO to user
     const userRef = db.collection("users").doc(userId);
     tx.update(userRef, {
-      elo:        admin.firestore.FieldValue.increment(ELO_PER_EDGE),
-      weeklyElo:  admin.firestore.FieldValue.increment(ELO_PER_EDGE),
-      monthlyElo: admin.firestore.FieldValue.increment(ELO_PER_EDGE),
+      elo:        FieldValue.increment(ELO_PER_EDGE),
+      weeklyElo:  FieldValue.increment(ELO_PER_EDGE),
+      monthlyElo: FieldValue.increment(ELO_PER_EDGE),
     });
 
     return { correct: true, eloAwarded: ELO_PER_EDGE, totalCorrect, isComplete };

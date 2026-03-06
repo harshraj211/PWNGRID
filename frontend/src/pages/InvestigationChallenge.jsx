@@ -92,7 +92,12 @@ export default function InvestigationChallenge() {
         }, 1000);
         setFlagError(`Too many attempts. Try again in ${secs}s.`);
       } else {
-        setFlagError(err.message || "Submission failed.");
+        const msg = err.message || "Submission failed.";
+        if (msg === "internal" || code === "functions/internal") {
+          setFlagError("Could not reach the server. Please check your connection and try again.");
+        } else {
+          setFlagError(msg);
+        }
       }
     } finally {
       setFlagSubmitting(false);
@@ -111,9 +116,10 @@ export default function InvestigationChallenge() {
         }
         setChallenge(data);
 
-        openChallengeFn({ challengeId }).catch(err =>
-          console.warn("openChallenge unavailable:", err.message)
-        );
+        openChallengeFn({ challengeId }).catch(err => {
+          console.warn("openChallenge unavailable:", err.message);
+          // Don't block the page — challenge data loaded from Firestore directly
+        });
       } catch (err) {
         console.error(err);
         setError("Failed to load challenge.");

@@ -22,7 +22,10 @@ function hashAnswer(normalizedAnswer) {
   if (typeof normalizedAnswer !== "string" || normalizedAnswer.length === 0) {
     throw new Error("Cannot hash an empty or non-string answer.");
   }
-  return crypto.createHash("sha256").update(normalizedAnswer).digest("hex");
+  // Collapse whitespace to single space + append salt to match frontend hash
+  const collapsed = normalizedAnswer.replace(/\s+/g, " ");
+  const salted    = collapsed + "osint-arena-salt-2024";
+  return crypto.createHash("sha256").update(salted).digest("hex");
 }
 
 /**

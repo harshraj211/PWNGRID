@@ -12,9 +12,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
@@ -22,9 +22,9 @@ import Navbar from "../components/layout/Navbar";
 import WriteupEditor from "../components/writeup/WriteupEditor";
 import "./ChallengeSolve.css";
 
-const functions = getFunctions();
 const openChallengeFn  = httpsCallable(functions, "openChallenge");
 const submitAnswerFn   = httpsCallable(functions, "submitAnswer");
+const unlockHintFn     = httpsCallable(functions, "unlockHint");
 
 // Difficulty config
 const DIFFICULTY = {
@@ -156,7 +156,12 @@ export default function ChallengeSolve() {
         startRateLimitCountdown(secs);
         setSubmitError(`Too many attempts. Try again in ${secs} seconds.`);
       } else {
-        setSubmitError(err.message || "Submission failed. Please try again.");
+        const msg = err.message || "Submission failed. Please try again.";
+        if (msg === "internal" || code === "functions/internal") {
+          setSubmitError("Could not reach the server. Please check your connection and try again.");
+        } else {
+          setSubmitError(msg);
+        }
       }
     } finally {
       setSubmitting(false);
