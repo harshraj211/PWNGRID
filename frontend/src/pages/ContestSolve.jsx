@@ -22,6 +22,7 @@ import { useAuth } from "../context/AuthContext";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import Navbar from "../components/layout/Navbar";
+import RaceChart from "../components/contest/RaceChart";
 import "./ContestSolve.css";
 
 const functions         = getFunctions();
@@ -63,10 +64,13 @@ export default function ContestSolve() {
 
   // Scoreboard
   const [scoreboard, setScoreboard]   = useState([]);
-  const [sbTab, setSbTab]             = useState("scoreboard"); // scoreboard | mysolves
+  const [sbTab, setSbTab]             = useState("scoreboard"); // scoreboard | race | mysolves
+  const [sbLimit, setSbLimit]         = useState(25);
+  const [sbHasMore, setSbHasMore]     = useState(false);
 
   // Timer
   const [timeRemaining, setTimeRemaining] = useState(0);
+  const [contestEnded, setContestEnded]   = useState(false);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -81,14 +85,21 @@ export default function ContestSolve() {
       query(
         collection(db, "contests", contestId, "participants"),
         orderBy("score", "desc"),
-        limit(25)
+        limit(sbLimit + 1) // fetch one extra to detect "has more"
       ),
       (snap) => {
-        setScoreboard(snap.docs.map((d, i) => ({ id: d.id, rank: i + 1, ...d.data() })));
+        const docs = snap.docs.map((d, i) => ({ id: d.id, rank: i + 1, ...d.data() }));
+        if (docs.length > sbLimit) {
+          setSbHasMore(true);
+          setScoreboard(docs.slice(0, sbLimit));
+        } else {
+          setSbHasMore(false);
+          setScoreboard(docs);
+        }
       }
     );
     return unsub;
-  }, [contestId]);
+  }, [contestId, sbLimit]);
 
   // Rate limit countdown
   useEffect(() => {
@@ -156,7 +167,11 @@ export default function ContestSolve() {
     timerRef.current = setInterval(() => {
       const remaining = Math.max(0, endMs - Date.now());
       setTimeRemaining(remaining);
-      if (remaining === 0) clearInterval(timerRef.current);
+      if (remaining === 0) {
+        clearInterval(timerRef.current);
+        // Auto-submit: disable further input when contest ends
+        setContestEnded(true);
+      }
     }, 1000);
     setTimeRemaining(Math.max(0, endMs - Date.now()));
   }
@@ -217,6 +232,10 @@ export default function ContestSolve() {
     setSubmitError("");
     setHintUsed(false);
     setHintVisible(false);
+  }
+
+  function loadMoreScoreboard() {
+    setSbLimit(prev => prev + 25);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -283,37 +302,35 @@ export default function ContestSolve() {
         </div>
       )}
 
-      {/* ── Main panels ──────────────────────────────────────────────── */}
+      {/* ── Challenge tabs (horizontal) ─────────────────────────────── */}
+      <div className="cs-challenge-tabs">
+        {challenges.map((c) => {
+          const solved  = solvedIds.has(c.id);
+          const active  = activeChallenge?.id === c.id;
+          const diff    = DIFF_CONFIG[c.difficulty] || {};
+          return (
+            <button
+              key={c.id}
+              className={`cs-challenge-tab ${active ? "cs-challenge-tab--active" : ""} ${solved ? "cs-challenge-tab--solved" : ""}`}
+              onClick={() => selectChallenge(c)}
+            >
+              <span
+                className="cs-challenge-dot"
+                style={{ background: solved ? "var(--color-accent)" : diff.color || "var(--color-border)" }}
+              />
+              <span className="cs-challenge-tab-title">{c.title}</span>
+              {solved && <span className="cs-challenge-check">✓</span>}
+              <span className="cs-challenge-pts">+{c.basePoints}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Main split panels ────────────────────────────────────────── */}
       <div className="cs-panels">
 
-        {/* LEFT: challenge list + description */}
+        {/* LEFT: challenge description */}
         <div className="cs-panel cs-panel--left">
-
-          {/* Challenge list */}
-          <div className="cs-challenge-list">
-            {challenges.map((c) => {
-              const solved  = solvedIds.has(c.id);
-              const active  = activeChallenge?.id === c.id;
-              const diff    = DIFF_CONFIG[c.difficulty] || {};
-              return (
-                <button
-                  key={c.id}
-                  className={`cs-challenge-item ${active ? "cs-challenge-item--active" : ""} ${solved ? "cs-challenge-item--solved" : ""}`}
-                  onClick={() => selectChallenge(c)}
-                >
-                  <span
-                    className="cs-challenge-dot"
-                    style={{ background: solved ? "var(--color-accent)" : diff.color || "var(--color-border)" }}
-                  />
-                  <span className="cs-challenge-item-title">{c.title}</span>
-                  {solved && <span className="cs-challenge-check">✓</span>}
-                  <span className="cs-challenge-pts">+{c.basePoints}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Active challenge description */}
           {activeChallenge && (
             <div className="cs-description">
               <div className="cs-description-header">
@@ -329,6 +346,50 @@ export default function ContestSolve() {
               <div className="cs-markdown">
                 <ReactMarkdown rehypePlugins={[rehypeSanitize]}>{activeChallenge.description}</ReactMarkdown>
               </div>
+
+              {/* Media attachment */}
+              {activeChallenge.mediaURL && (
+                <div className="cs-media-section">
+                  <div className="cs-media-header">
+                    <span className="cs-media-label">Attached File</span>
+                    <button
+                      type="button"
+                      className="cs-media-download-btn"
+                      onClick={() => downloadMedia(activeChallenge.mediaURL, activeChallenge.mediaFilename)}
+                    >
+                      ↓ Download
+                    </button>
+                  </div>
+                  <div className="cs-media-wrap">
+                    {activeChallenge.mediaType === "image" && (
+                      <img
+                        src={activeChallenge.mediaURL}
+                        alt="Challenge media"
+                        style={{ maxWidth: "100%", borderRadius: 8, marginTop: 8 }}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    )}
+                    {activeChallenge.mediaType === "video" && (
+                      <video controls style={{ maxWidth: "100%", borderRadius: 8, marginTop: 8 }}>
+                        <source src={activeChallenge.mediaURL} />
+                      </video>
+                    )}
+                    {activeChallenge.mediaType === "audio" && (
+                      <audio controls style={{ width: "100%", marginTop: 8 }}>
+                        <source src={activeChallenge.mediaURL} />
+                      </audio>
+                    )}
+                    {activeChallenge.mediaType && !["image","video","audio"].includes(activeChallenge.mediaType) && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, padding: "8px 12px", background: "var(--color-bg-secondary)", borderRadius: 8, fontSize: 13 }}>
+                        <span>📎</span>
+                        <span style={{ color: "var(--color-text-muted)" }}>{activeChallenge.mediaFilename || "attached-file"}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Hint */}
               {activeChallenge.hint && isLive && !solvedIds.has(activeChallenge.id) && (
@@ -357,7 +418,7 @@ export default function ContestSolve() {
         <div className="cs-panel cs-panel--right">
 
           {/* Answer form */}
-          {isLive && !notRegistered && activeChallenge && !solvedIds.has(activeChallenge?.id) && (
+          {isLive && !contestEnded && !notRegistered && activeChallenge && !solvedIds.has(activeChallenge?.id) && (
             <form className="cs-answer-form" onSubmit={handleSubmit} noValidate>
               <div className="cs-form-header">
                 <span className="cs-form-label">Submit Answer</span>
@@ -381,7 +442,7 @@ export default function ContestSolve() {
               <input
                 type="text"
                 className="cs-answer-input"
-                placeholder="Enter your answer..."
+                placeholder={activeChallenge.flagFormat ? `Format: ${activeChallenge.flagFormat}` : "Enter your answer..."}
                 value={answer}
                 onChange={e => setAnswer(e.target.value)}
                 disabled={submitting || rateLimit > 0}
@@ -389,6 +450,14 @@ export default function ContestSolve() {
                 autoCorrect="off"
                 spellCheck={false}
               />
+
+              {/* Flag format hint */}
+              {activeChallenge.flagFormat && (
+                <div className="cs-flag-format-hint">
+                  <span className="cs-flag-format-label">Flag format:</span>
+                  <code className="cs-flag-format-code">{activeChallenge.flagFormat}</code>
+                </div>
+              )}
 
               {rateLimit > 0 && (
                 <div className="cs-ratelimit">⏳ Wait {rateLimit}s before retrying</div>
@@ -402,6 +471,13 @@ export default function ContestSolve() {
                 {submitting ? "Verifying..." : rateLimit > 0 ? `Wait ${rateLimit}s` : "Submit →"}
               </button>
             </form>
+          )}
+
+          {/* Contest ended banner */}
+          {contestEnded && (
+            <div className="cs-not-registered" style={{ background: "rgba(255,149,0,0.08)", borderColor: "var(--color-medium)" }}>
+              ⏱ Contest has ended. Your results have been auto-submitted. Rankings will be finalized shortly.
+            </div>
           )}
 
           {/* Correct solve celebration */}
@@ -436,6 +512,12 @@ export default function ContestSolve() {
                 Scoreboard
               </button>
               <button
+                className={`cs-sb-tab ${sbTab === "race" ? "cs-sb-tab--active" : ""}`}
+                onClick={() => setSbTab("race")}
+              >
+                Race Chart
+              </button>
+              <button
                 className={`cs-sb-tab ${sbTab === "mysolves" ? "cs-sb-tab--active" : ""}`}
                 onClick={() => setSbTab("mysolves")}
               >
@@ -448,27 +530,52 @@ export default function ContestSolve() {
                 {scoreboard.length === 0 ? (
                   <p className="cs-sb-empty">No participants yet.</p>
                 ) : (
-                  scoreboard.map((entry) => {
-                    const isMe = entry.id === currentUser?.uid;
-                    return (
-                      <div key={entry.id} className={`cs-sb-row ${isMe ? "cs-sb-row--me" : ""}`}>
-                        <span className="cs-sb-rank">
-                          {entry.rank <= 3
-                            ? ["🥇","🥈","🥉"][entry.rank - 1]
-                            : `#${entry.rank}`
-                          }
-                        </span>
-                        <span className="cs-sb-username">
-                          {entry.username}
-                          {isMe && <span className="cs-sb-you">you</span>}
-                        </span>
-                        <span className="cs-sb-solves">{entry.solveCount || 0} ✓</span>
-                        <span className="cs-sb-score">{entry.score || 0}</span>
-                      </div>
-                    );
-                  })
+                  <>
+                    {scoreboard.map((entry) => {
+                      const isMe = entry.id === currentUser?.uid;
+                      return (
+                        <div key={entry.id} className={`cs-sb-row ${isMe ? "cs-sb-row--me" : ""}`}>
+                          <span className="cs-sb-rank">
+                            {entry.rank <= 3
+                              ? ["🥇","🥈","🥉"][entry.rank - 1]
+                              : `#${entry.rank}`
+                            }
+                          </span>
+                          <span className="cs-sb-username">
+                            {entry.username}
+                            {isMe && <span className="cs-sb-you">you</span>}
+                          </span>
+                          <span className="cs-sb-solves">{entry.solveCount || 0} ✓</span>
+                          <span className="cs-sb-score">{entry.score || 0}</span>
+                        </div>
+                      );
+                    })}
+                    {/* Pagination: load more */}
+                    {sbHasMore && (
+                      <button
+                        className="cs-sb-load-more"
+                        onClick={loadMoreScoreboard}
+                        style={{
+                          display: "block", width: "100%", padding: "8px", marginTop: 4,
+                          background: "none", border: "1px solid var(--color-border)",
+                          borderRadius: 6, color: "var(--color-text-muted)",
+                          fontFamily: "var(--font-mono)", fontSize: 12, cursor: "pointer",
+                        }}
+                      >
+                        Load more participants...
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
+            )}
+
+            {sbTab === "race" && (
+              <RaceChart
+                contestId={contestId}
+                startMs={startMs}
+                endMs={endMs}
+              />
             )}
 
             {sbTab === "mysolves" && (
@@ -561,3 +668,22 @@ function formatSeconds(secs) {
 }
 
 function pad(n) { return String(n).padStart(2, "0"); }
+
+function downloadMedia(url, filename) {
+  const name = filename || url.split("/").pop()?.split("?")[0] || "download";
+  const isCloudinary = url.includes("cloudinary.com");
+  const isRaw = url.includes("/raw/upload/");
+
+  // fl_attachment only works on image/video, not raw uploads
+  const dlUrl = isCloudinary && !isRaw
+    ? url.replace("/upload/", "/upload/fl_attachment/")
+    : url;
+
+  const a = document.createElement("a");
+  a.href = dlUrl;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 500);
+}

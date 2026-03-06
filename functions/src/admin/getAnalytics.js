@@ -20,6 +20,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { Timestamp } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -30,7 +31,13 @@ module.exports = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
   }
-  if (context.auth.token.role !== "admin") {
+  // Check JWT custom claim first, fallback to Firestore role field
+  let callerRole = context.auth.token.role;
+  if (callerRole !== "admin") {
+    const callerSnap = await db.collection("users").doc(context.auth.uid).get();
+    if (callerSnap.exists) callerRole = callerSnap.data().role || "user";
+  }
+  if (callerRole !== "admin") {
     throw new functions.https.HttpsError("permission-denied", "Admin role required.");
   }
 
@@ -40,9 +47,9 @@ module.exports = functions.https.onCall(async (data, context) => {
   const weekStart  = new Date(todayStart.getTime() - 7  * 24 * 60 * 60 * 1000);
   const monthStart = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const todayTs  = admin.firestore.Timestamp.fromDate(todayStart);
-  const weekTs   = admin.firestore.Timestamp.fromDate(weekStart);
-  const monthTs  = admin.firestore.Timestamp.fromDate(monthStart);
+  const todayTs  = Timestamp.fromDate(todayStart);
+  const weekTs   = Timestamp.fromDate(weekStart);
+  const monthTs  = Timestamp.fromDate(monthStart);
 
   // ── 3. Run all queries in parallel ────────────────────────────────────────
   const [

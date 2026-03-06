@@ -10,9 +10,9 @@
  * File location: frontend/src/pages/InvestigationChallenge.jsx
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, query, where, limit } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../firebase/config";
 import { useAuth } from "../context/AuthContext";
@@ -31,7 +31,7 @@ const DIFF_CONFIG = {
 export default function InvestigationChallenge() {
   const { challengeId } = useParams();
   const navigate        = useNavigate();
-  const { canSolveToday } = useAuth();
+  const { currentUser, canSolveToday } = useAuth();
 
   const [challenge, setChallenge] = useState(null);
   const [loading, setLoading]     = useState(true);
@@ -40,6 +40,13 @@ export default function InvestigationChallenge() {
 
   // "briefing" | "split" | "fullscreen"
   const [viewMode, setViewMode] = useState("briefing");
+
+  // Timer
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef(null);
+  const openedAtRef = useRef(null);
+  const [challengeStarted, setChallengeStarted] = useState(false);
+  const [flagFormat, setFlagFormat] = useState(null);
 
   // Flag submission state
   const [flagAnswer, setFlagAnswer]         = useState("");
@@ -115,11 +122,32 @@ export default function InvestigationChallenge() {
           return;
         }
         setChallenge(data);
+        setFlagFormat(data.flagFormat || null);
 
-        openChallengeFn({ challengeId }).catch(err => {
-          console.warn("openChallenge unavailable:", err.message);
-          // Don't block the page — challenge data loaded from Firestore directly
-        });
+        // Check if user already solved this challenge — skip briefing if so
+        let isAlreadySolved = false;
+        if (currentUser?.uid) {
+          const submSnap = await getDocs(query(
+            collection(db, "submissions"),
+            where("userId", "==", currentUser.uid),
+            where("challengeId", "==", snap.id),
+            where("correct", "==", true),
+            limit(1)
+          ));
+          if (!submSnap.empty) {
+            isAlreadySolved = true;
+            setFlagResult({ correct: true, eloChange: 0, alreadySolved: true });
+            setViewMode("split");
+          }
+        }
+
+        // Auto-start when coming from the "Start Challenge" gateway
+        if (!isAlreadySolved) {
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get("autostart") === "1") {
+            handleStartInvestigation();
+          }
+        }
       } catch (err) {
         console.error(err);
         setError("Failed to load challenge.");
@@ -128,7 +156,45 @@ export default function InvestigationChallenge() {
       }
     }
     init();
+    return () => clearInterval(timerRef.current);
   }, [challengeId, navigate]);
+
+  // Start Investigation — opens server session + starts timer
+  async function handleStartInvestigation() {
+    try {
+      const res = await openChallengeFn({ challengeId });
+
+      // Already solved on server — skip timer, show solved state
+      if (res.data?.alreadySolved) {
+        setFlagResult({ correct: true, eloChange: 0, alreadySolved: true });
+        setViewMode("split");
+        return;
+      }
+
+      const serverTimestamp = res.data?.openTimestamp || Date.now();
+      openedAtRef.current = serverTimestamp;
+      setChallengeStarted(true);
+
+      if (res.data?.challengeMeta?.flagFormat) {
+        setFlagFormat(res.data.challengeMeta.flagFormat);
+      }
+
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - openedAtRef.current) / 1000));
+      }, 1000);
+
+      setViewMode("split");
+    } catch (err) {
+      console.error("Failed to start investigation:", err);
+      // Still allow navigation to split view — start a client-side timer as fallback
+      openedAtRef.current = Date.now();
+      setChallengeStarted(true);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - openedAtRef.current) / 1000));
+      }, 1000);
+      setViewMode("split");
+    }
+  }
 
   const openGraphNewTab = useCallback(() => {
     const url = `${window.location.origin}/investigate/${challengeId}?mode=fullscreen`;
@@ -176,7 +242,7 @@ export default function InvestigationChallenge() {
             <h1 className="inv-topbar-name">{challenge.title}</h1>
           </div>
           <div className="inv-topbar-right">
-            <button className="inv-topbar-start-btn" onClick={() => setViewMode("split")}>
+            <button className="inv-topbar-start-btn" onClick={handleStartInvestigation}>
               🔍 Start Investigating
             </button>
           </div>
@@ -193,6 +259,51 @@ export default function InvestigationChallenge() {
               </h2>
               <p className="inv-briefing-desc">{challenge.description}</p>
             </section>
+
+            {/* Media attachment */}
+            {challenge.mediaURL && (
+              <section className="inv-briefing-section">
+                <h2 className="inv-briefing-heading">
+                  <span className="inv-briefing-heading-icon">📎</span>
+                  Attached File
+                </h2>
+                <div className="inv-media-wrap">
+                  {challenge.mediaType === "image" && (
+                    <img
+                      src={challenge.mediaURL}
+                      alt="Challenge media"
+                      className="inv-media-image"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  )}
+                  {challenge.mediaType === "video" && (
+                    <video controls className="inv-media-video">
+                      <source src={challenge.mediaURL} />
+                    </video>
+                  )}
+                  {challenge.mediaType === "audio" && (
+                    <audio controls className="inv-media-audio">
+                      <source src={challenge.mediaURL} />
+                    </audio>
+                  )}
+                  {(challenge.mediaType === "file" || (!["image","video","audio"].includes(challenge.mediaType) && challenge.mediaType !== "none")) && (
+                    <div className="inv-media-file-info">
+                      <span>📎</span>
+                      <span>{challenge.mediaFilename || "attached-file"}</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="inv-media-download-btn"
+                    onClick={() => downloadInvMedia(challenge.mediaURL, challenge.mediaFilename)}
+                  >
+                    ↓ Download Original (metadata preserved)
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* Objectives */}
             {challenge.objectives?.length > 0 && (
@@ -271,8 +382,9 @@ export default function InvestigationChallenge() {
                 <div className="inv-flag-success">
                   <span className="inv-flag-success-icon">✓</span>
                   <div>
-                    <div className="inv-flag-success-title">Correct!</div>
-                    <div className="inv-flag-success-elo">+{flagResult.eloChange || 0} ELO</div>
+                    <div className="inv-flag-success-title">{flagResult?.alreadySolved ? "Already Solved" : "Correct!"}</div>
+                    {!flagResult?.alreadySolved && <div className="inv-flag-success-elo">+{flagResult.eloChange || 0} ELO</div>}
+                    {flagResult?.alreadySolved && <div className="inv-flag-success-elo" style={{ color: "var(--color-text-muted)" }}>Flag submission disabled</div>}
                   </div>
                 </div>
               ) : (
@@ -291,7 +403,7 @@ export default function InvestigationChallenge() {
                     <input
                       type="text"
                       className="inv-flag-input"
-                      placeholder="Enter your flag answer..."
+                      placeholder={flagFormat ? `Format: ${flagFormat}` : "Enter your flag answer..."}
                       value={flagAnswer}
                       onChange={e => setFlagAnswer(e.target.value)}
                       disabled={flagSubmitting || rateLimitSecs > 0}
@@ -305,12 +417,18 @@ export default function InvestigationChallenge() {
                       {flagSubmitting ? "Verifying..." : rateLimitSecs > 0 ? `Wait ${rateLimitSecs}s` : "Submit →"}
                     </button>
                   </div>
+                  {flagFormat && (
+                    <div className="inv-flag-format-hint">
+                      <span className="inv-flag-format-label">Flag format:</span>
+                      <code className="inv-flag-format-code">{flagFormat}</code>
+                    </div>
+                  )}
                 </form>
               )}
             </section>
 
             {/* CTA */}
-            <button className="inv-briefing-cta" onClick={() => setViewMode("split")}>
+            <button className="inv-briefing-cta" onClick={handleStartInvestigation}>
               🔍 Start Investigating →
             </button>
           </div>
@@ -337,6 +455,14 @@ export default function InvestigationChallenge() {
           <h1 className="inv-topbar-name">{challenge.title}</h1>
         </div>
         <div className="inv-topbar-right">
+          {/* Timer */}
+          {challengeStarted && !flagResult?.correct && (
+            <div className="inv-topbar-timer" title="Time elapsed">
+              <span className="inv-topbar-timer-icon">⏱</span>
+              <span className="inv-topbar-timer-value">{formatInvTime(elapsedSeconds)}</span>
+            </div>
+          )}
+
           {eloTotal > 0 && <div className="inv-topbar-elo">+{eloTotal} ELO</div>}
 
           {/* Toggle sidebar */}
@@ -379,6 +505,40 @@ export default function InvestigationChallenge() {
                 <div className="inv-sidebar-label">MISSION BRIEF</div>
                 <p className="inv-sidebar-body">{challenge.description}</p>
               </div>
+
+              {/* Media in sidebar */}
+              {challenge.mediaURL && (
+                <div className="inv-sidebar-section">
+                  <div className="inv-sidebar-label">📎 ATTACHED FILE</div>
+                  <div className="inv-sidebar-media">
+                    {challenge.mediaType === "image" && (
+                      <img
+                        src={challenge.mediaURL}
+                        alt="Challenge media"
+                        className="inv-sidebar-media-img"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    )}
+                    {challenge.mediaType === "video" && (
+                      <video controls className="inv-sidebar-media-video">
+                        <source src={challenge.mediaURL} />
+                      </video>
+                    )}
+                    {challenge.mediaType === "audio" && (
+                      <audio controls style={{ width: '100%' }}>
+                        <source src={challenge.mediaURL} />
+                      </audio>
+                    )}
+                    <button
+                      type="button"
+                      className="inv-sidebar-download-btn"
+                      onClick={() => downloadInvMedia(challenge.mediaURL, challenge.mediaFilename)}
+                    >
+                      ↓ Download Original
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {challenge.objectives?.length > 0 && (
                 <div className="inv-sidebar-section">
@@ -438,8 +598,9 @@ export default function InvestigationChallenge() {
                   <div className="inv-flag-success inv-flag-success--sm">
                     <span className="inv-flag-success-icon">✓</span>
                     <div>
-                      <div className="inv-flag-success-title">Correct!</div>
-                      <div className="inv-flag-success-elo">+{flagResult.eloChange || 0} ELO</div>
+                      <div className="inv-flag-success-title">{flagResult?.alreadySolved ? "Already Solved" : "Correct!"}</div>
+                      {!flagResult?.alreadySolved && <div className="inv-flag-success-elo">+{flagResult.eloChange || 0} ELO</div>}
+                      {flagResult?.alreadySolved && <div className="inv-flag-success-elo" style={{ color: "var(--color-text-muted)" }}>Flag submission disabled</div>}
                     </div>
                   </div>
                 ) : (
@@ -484,8 +645,8 @@ export default function InvestigationChallenge() {
               {flagResult?.correct ? (
                 <div className="inv-flag-success inv-flag-success--sm">
                   <span className="inv-flag-success-icon">✓</span>
-                  <span className="inv-flag-success-title">Solved!</span>
-                  <span className="inv-flag-success-elo">+{flagResult.eloChange || 0} ELO</span>
+                  <span className="inv-flag-success-title">{flagResult?.alreadySolved ? "Already Solved" : "Solved!"}</span>
+                  {!flagResult?.alreadySolved && <span className="inv-flag-success-elo">+{flagResult.eloChange || 0} ELO</span>}
                 </div>
               ) : (
                 <form onSubmit={handleFlagSubmit} className="inv-floating-flag-form">
@@ -516,4 +677,34 @@ export default function InvestigationChallenge() {
       </div>
     </div>
   );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatInvTime(seconds) {
+  if (!seconds && seconds !== 0) return "0s";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+/**
+ * Download a file from a cross-origin URL (e.g. Cloudinary) as a blob
+ * so the browser triggers a real download with the original filename.
+ */
+function downloadInvMedia(url, filename) {
+  const name = filename || url.split("/").pop()?.split("?")[0] || "download";
+  const isCloudinary = url.includes("cloudinary.com");
+  const isRaw = url.includes("/raw/upload/");
+
+  const dlUrl = isCloudinary && !isRaw
+    ? url.replace("/upload/", "/upload/fl_attachment/")
+    : url;
+
+  const a = document.createElement("a");
+  a.href = dlUrl;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 500);
 }

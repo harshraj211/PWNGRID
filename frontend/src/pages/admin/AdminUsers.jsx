@@ -256,7 +256,7 @@ export default function AdminUsers() {
                   </span>
                 </span>
                 <span>
-                  <span className={`admin-chip ${user.role === "admin" ? "admin-chip--admin" : user.role === "mod" ? "admin-chip--mod" : "admin-chip--user"}`}>
+                  <span className={`admin-chip ${user.role === "admin" ? "admin-chip--admin" : user.role === "mod" ? "admin-chip--mod" : user.role === "contest_mod" ? "admin-chip--mod" : "admin-chip--user"}`}>
                     {user.role || "user"}
                   </span>
                 </span>
@@ -379,7 +379,7 @@ export default function AdminUsers() {
             <div className="admin-detail-section">
               <span className="admin-detail-section-label">Role</span>
               <div className="admin-btn-group">
-                {["user","mod","admin"].map(r => (
+                {["user","contest_mod","mod","admin"].map(r => (
                   <button
                     key={r}
                     className={`admin-toggle-btn ${selectedUser.role === r ? "admin-toggle-btn--active" : ""}`}

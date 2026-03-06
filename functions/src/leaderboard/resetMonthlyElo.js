@@ -15,6 +15,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -89,6 +90,8 @@ module.exports = functions.pubsub
           }
 
           batch.update(doc.ref, update);
+          // Sync publicProfiles
+          batch.update(db.collection("publicProfiles").doc(doc.id), { monthlyElo: 0 });
         });
 
         await batch.commit();
@@ -107,7 +110,7 @@ module.exports = functions.pubsub
         totalUsersReset: totalReset,
         proUsersAllocatedFreezes: freezesAllocated,
         durationMs: Date.now() - startTime,
-        executedAt: admin.firestore.FieldValue.serverTimestamp(),
+        executedAt: FieldValue.serverTimestamp(),
       });
 
       console.log(

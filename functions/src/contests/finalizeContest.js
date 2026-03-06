@@ -28,6 +28,7 @@
 
 const { onSchedule }      = require("firebase-functions/v2/scheduler");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { sendNotification } = require("../lib/sendNotification");
 
 const db = getFirestore();
 
@@ -90,6 +91,25 @@ async function finalizeOne(contestDoc) {
     ...d.data(),
   }));
 
+  // ── Auto-submit: set finishTime for anyone who didn't finish ──────────────
+  const autoSubmitBatch = db.batch();
+  let autoSubmitCount = 0;
+  for (const p of participants) {
+    if (!p.finishTime && (p.solveCount || 0) > 0) {
+      autoSubmitBatch.update(p.ref, {
+        finishTime: contest.endTime,
+        autoSubmitted: true,
+      });
+      p.finishTime = contest.endTime;
+      p.autoSubmitted = true;
+      autoSubmitCount++;
+    }
+  }
+  if (autoSubmitCount > 0) {
+    await autoSubmitBatch.commit();
+    console.log(`Auto-submitted finish times for ${autoSubmitCount} participants.`);
+  }
+
   // ── Sort participants (CTF ranking) ───────────────────────────────────────
   const endMs = contest.endTime?.toMillis?.() ?? Date.now();
 
@@ -140,6 +160,13 @@ async function finalizeOne(contestDoc) {
         weeklyElo:  FieldValue.increment(eloAward),
         monthlyElo: FieldValue.increment(eloAward),
       });
+
+      // Sync publicProfiles for leaderboard
+      batch.update(db.collection("publicProfiles").doc(p.id), {
+        elo:        FieldValue.increment(eloAward),
+        weeklyElo:  FieldValue.increment(eloAward),
+        monthlyElo: FieldValue.increment(eloAward),
+      });
     }
 
     eloLog.push({ userId: p.id, username: p.username, rank, score: p.score, eloAward });
@@ -165,6 +192,106 @@ async function finalizeOne(contestDoc) {
   });
 
   await batch.commit();
+
+  // ── Auto-publish contest-exclusive challenges ────────────────────────────
+  try {
+    const challengeIds = contest.challengeIds || [];
+    if (challengeIds.length > 0) {
+      const publishBatch = db.batch();
+      let publishCount = 0;
+      for (const cid of challengeIds) {
+        const cRef = db.collection("challenges").doc(cid);
+        const cSnap = await cRef.get();
+        if (cSnap.exists && cSnap.data().visibility === "contest") {
+          publishBatch.update(cRef, {
+            visibility: "public",
+            isActive: true,
+            updatedAt: Timestamp.now(),
+          });
+          publishCount++;
+        }
+      }
+      if (publishCount > 0) {
+        await publishBatch.commit();
+        console.log(`Auto-published ${publishCount} contest-exclusive challenges for ${contestId}.`);
+      }
+    }
+  } catch (pubErr) {
+    console.error("Failed to auto-publish contest challenges:", pubErr);
+  }
+
+  // ── Generate certificates for top 3 ──────────────────────────────────────
+  try {
+    const certBatch = db.batch();
+    const top3 = eloLog.filter(e => e.rank <= 3 && (e.score || 0) > 0);
+
+    for (const entry of top3) {
+      const certId = `contest_${contestId}_rank${entry.rank}`;
+      const certRef = db.collection("certifications").doc(certId);
+
+      const certData = {
+        type: "contest",
+        contestId,
+        contestTitle: contest.title,
+        userId: entry.userId,
+        username: entry.username,
+        rank: entry.rank,
+        score: entry.score,
+        eloAwarded: entry.eloAward,
+        difficulty: contest.difficulty || "mixed",
+        participantCount: totalParticipants,
+        issuedAt: Timestamp.now(),
+        verifyCode: `${contestId.slice(0, 6)}-${entry.rank}-${entry.userId.slice(0, 6)}`.toUpperCase(),
+      };
+
+      certBatch.set(certRef, certData);
+
+      // Update user's certifications map
+      certBatch.update(db.collection("users").doc(entry.userId), {
+        [`certifications.${certId}`]: {
+          type: "contest",
+          title: contest.title,
+          rank: entry.rank,
+          issuedAt: Timestamp.now(),
+        },
+        totalCertificates: FieldValue.increment(1),
+      });
+
+      // Send certificate notification
+      await sendNotification(entry.userId, {
+        type: "certificate",
+        title: "📜 Certificate Earned!",
+        body: `You earned a certificate for placing #${entry.rank} in ${contest.title}. Verify: ${certData.verifyCode}`,
+        link: `/cert/${certId}`,
+      });
+    }
+
+    if (top3.length > 0) {
+      await certBatch.commit();
+      console.log(`Generated ${top3.length} certificates for contest ${contestId}.`);
+    }
+  } catch (certErr) {
+    console.error("Failed to generate certificates:", certErr);
+  }
+
+  // ── Notify participants of results ───────────────────────────────────────
+  try {
+    for (const entry of eloLog.slice(0, 50)) {
+      const rankLabel = entry.rank <= 3
+        ? ["🥇 1st Place!", "🥈 2nd Place!", "🥉 3rd Place!"][entry.rank - 1]
+        : `Rank #${entry.rank}`;
+      await sendNotification(entry.userId, {
+        type: "contest_result",
+        title: `${rankLabel} — ${contest.title}`,
+        body: entry.eloAward > 0
+          ? `Score: ${entry.score} pts · +${entry.eloAward} ELO awarded`
+          : `Score: ${entry.score} pts`,
+        link: `/contests/${contestId}`,
+      });
+    }
+  } catch (notifErr) {
+    console.error("Failed to send contest result notifications:", notifErr);
+  }
 
   console.log(`Contest ${contestId} finalized. ${totalParticipants} participants, top score: ${ranked[0]?.score ?? 0}`);
 }

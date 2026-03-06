@@ -24,6 +24,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { normalizeAnswer } = require("../lib/normalizeAnswer");
 const { hashAnswer }      = require("../lib/hashAnswer");
+const { sendNotification } = require("../lib/sendNotification");
 
 const db = getFirestore();
 
@@ -111,6 +112,130 @@ exports.submitContestAnswer = onCall({ enforceAppCheck: false }, async (request)
     throw new HttpsError("already-exists", "Already solved this challenge in this contest.");
   }
 
+  // ── Abuse detection ────────────────────────────────────────────────────────
+  // Three triggers:
+  //  (1) >10 submissions in 60s across all challenges  → rapid_submissions
+  //  (2) >8 wrong answers on a single challenge        → brute_force
+  //  (3) Correct answer <5s after switching challenges → cross_challenge_speed
+  // Each trigger writes to the global `flags` collection (visible in Admin → Flags)
+  // and marks the user doc with isFlagged:true so resolveFlag can act on it.
+
+  const RAPID_THRESHOLD   = 10;        // submissions per 60 s
+  const BRUTE_THRESHOLD   = 8;         // wrong answers on one challenge
+  const FAST_SOLVE_MS     = 5000;      // ms between solving consecutive challenges
+
+  // Helper: raise a global flag + mark user doc
+  async function raiseAbuseFlag(reason, details) {
+    const userRef  = db.collection("users").doc(userId);
+    const flagRef  = db.collection("flags").doc();
+    const username = participant.username || userId.slice(0, 8);
+
+    const batch = db.batch();
+
+    // Write to global flags collection (AdminFlags reads this)
+    batch.set(flagRef, {
+      userId,
+      reportedUserId:   userId,
+      reportedByUserId: "system",
+      type:             "contest_abuse",
+      reason,
+      details,
+      contestId,
+      contestTitle:     contest.title || contestId,
+      username,
+      resolved:         false,
+      createdAt:        FieldValue.serverTimestamp(),
+    });
+
+    // Mark user as flagged so resolveFlag + submit checks can act on it
+    batch.update(userRef, {
+      isFlagged:    true,
+      flagReason:   reason,
+      flaggedAt:    FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    // Notify admins
+    try {
+      const adminSnap = await db.collection("users")
+        .where("role", "==", "admin").get();
+      for (const adm of adminSnap.docs) {
+        await sendNotification(adm.id, {
+          type:  "flag_warning",
+          title: `⚠ Contest abuse: ${reason}`,
+          body:  `User ${username} flagged in "${contest.title || contestId}" — ${details}`,
+          link:  "/admin/flags",
+        });
+      }
+    } catch (_) { /* non-fatal */ }
+  }
+
+  // Block any user already flagged from continuing to submit
+  const userSnap = await db.collection("users").doc(userId).get();
+  if (userSnap.exists && userSnap.data().isFlagged) {
+    throw new HttpsError(
+      "permission-denied",
+      "Your account has been flagged for suspicious activity. Please contact support."
+    );
+  }
+
+  // Trigger (1): rapid submissions in last 60s
+  const recentSubsSnap = await db.collection("contestSubmissions")
+    .where("contestId", "==", contestId)
+    .where("userId",    "==", userId)
+    .where("timestamp", ">",  Timestamp.fromMillis(now - 60000))
+    .get();
+
+  if (recentSubsSnap.size >= RAPID_THRESHOLD) {
+    await raiseAbuseFlag(
+      "rapid_submissions",
+      `${recentSubsSnap.size} submissions in the last 60 seconds`
+    );
+    throw new HttpsError(
+      "resource-exhausted",
+      "Too many submissions in a short time. Your account has been flagged."
+    );
+  }
+
+  // Trigger (2): brute-force wrong answers on this challenge
+  const currentWrongCount = (attemptData?.wrongCount || 0);
+  if (currentWrongCount >= BRUTE_THRESHOLD) {
+    await raiseAbuseFlag(
+      "brute_force",
+      `${currentWrongCount} wrong answers on challenge ${challengeId} in contest ${contestId}`
+    );
+    throw new HttpsError(
+      "resource-exhausted",
+      "Too many wrong attempts on this challenge. Your account has been flagged."
+    );
+  }
+
+  // Trigger (3): cross-challenge speed (first attempt, solved another challenge very recently)
+  if (!attemptData?.lastWrongAt) {
+    const prevSolvesSnap = await contestRef
+      .collection("participants").doc(userId)
+      .collection("attempts")
+      .where("solved", "==", true)
+      .get();
+
+    if (prevSolvesSnap.size > 0) {
+      const solvedTimes = prevSolvesSnap.docs
+        .map(d => d.data().solvedAt?.toMillis?.() ?? 0)
+        .filter(t => t > 0);
+      const lastSolveMs = Math.max(...solvedTimes);
+      const msSinceLast = now - lastSolveMs;
+
+      if (msSinceLast > 0 && msSinceLast < FAST_SOLVE_MS) {
+        await raiseAbuseFlag(
+          "cross_challenge_speed",
+          `Solved previous challenge only ${msSinceLast}ms ago before first attempt on next challenge`
+        );
+        // Don't block — could be a coincidence; just log and let admin review
+      }
+    }
+  }
+
   // ── Verify answer ─────────────────────────────────────────────────────────
   const normalizedAnswer = normalizeAnswer(answer);
   const hashedSubmission = hashAnswer(normalizedAnswer);
@@ -193,6 +318,7 @@ exports.submitContestAnswer = onCall({ enforceAppCheck: false }, async (request)
     contestId,
     challengeId,
     userId,
+    username:     participant.username || "",
     answer:       normalizedAnswer,
     isCorrect:    true,
     pointsEarned,

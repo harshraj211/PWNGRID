@@ -106,17 +106,10 @@ module.exports = functions.https.onCall(async (data, context) => {
 
   // ── 5b. Access control gate ───────────────────────────────────────────────────
   // Easy:   always free
-  // Medium: free only if challenge.freeForAll === true (the 30%)
+  // Medium: always free
   // Hard:   free only if it's the weekly free challenge (config/weeklyFreeChallenge)
   if (!isPro) {
     const difficulty = challenge.difficulty;
-
-    if (difficulty === "medium" && !challenge.freeForAll) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        "This challenge requires a Pro subscription."
-      );
-    }
 
     if (difficulty === "hard") {
       // Check weekly free hard challenge
@@ -237,6 +230,11 @@ module.exports = functions.https.onCall(async (data, context) => {
       wrongSubmissions: FieldValue.increment(1),
     });
 
+    // Sync publicProfiles for leaderboard
+    batch.update(db.collection("publicProfiles").doc(userId), {
+      elo: newElo,
+    });
+
     // Update challenge attempt count
     batch.update(challengeRef, {
       attemptCount: FieldValue.increment(1),
@@ -265,8 +263,13 @@ module.exports = functions.https.onCall(async (data, context) => {
 
   let alreadySolved = false;
   let finalEloGain = 0;
-  let eloGainResult = { finalEloGain: 0, timeBonus: 1, hintPenalty: 1, attemptPenalty: 1 };
-  let streakResult = { currentStreak: user.currentStreak, maxStreak: user.maxStreak, lastActiveDate: user.lastActiveDate, streakChanged: false };
+  let eloGainResult = { finalEloGain: 0, baseElo: 0, timeBonus: 1, hintPenalty: 1, attemptPenalty: 1 };
+  let streakResult = {
+    currentStreak: user.currentStreak || 0,
+    maxStreak: user.maxStreak || 0,
+    lastActiveDate: user.lastActiveDate || null,
+    streakChanged: false,
+  };
 
   await db.runTransaction(async (tx) => {
     // Read alreadySolved INSIDE transaction — atomic with the write
@@ -281,32 +284,38 @@ module.exports = functions.https.onCall(async (data, context) => {
 
     // Only grant ELO on first solve
     if (!alreadySolved) {
-      eloGainResult = calculateEloGain({
-        difficulty: challenge.difficulty,
-        expectedTime: challenge.expectedTime,
-        timeTaken,
-        hintUsed,
-        wrongAttempts: wrongAttemptsThisSession,
-      });
+      try {
+        eloGainResult = calculateEloGain({
+          difficulty: challenge.difficulty || "easy",
+          expectedTime: challenge.expectedTime || 300,
+          timeTaken: timeTaken || 1,
+          hintUsed,
+          wrongAttempts: wrongAttemptsThisSession,
+        });
+      } catch (eloErr) {
+        console.error("calculateEloGain failed, using defaults:", eloErr.message);
+        eloGainResult = { finalEloGain: 10, baseElo: 10, timeBonus: 1, hintPenalty: 1, attemptPenalty: 1 };
+      }
       streakResult = calculateStreak({
         lastActiveDate: user.lastActiveDate || null,
         currentStreak: user.currentStreak || 0,
         maxStreak: user.maxStreak || 0,
       });
     }
-    finalEloGain = alreadySolved ? 0 : eloGainResult.finalEloGain;
+    finalEloGain = alreadySolved ? 0 : (eloGainResult.finalEloGain || 0);
 
     // Heatmap
     const heatmapSnap = await tx.get(heatmapRef);
     const existingHeatmap = heatmapSnap.exists ? heatmapSnap.data() : {};
     const { updatedMap: updatedHeatmap } = incrementHeatmapDay(existingHeatmap);
 
-    // Solve time average
+    // Solve time average (guard against NaN)
     const currentAvg = challenge.avgSolveTime || 0;
     const currentSolveCount = challenge.solveCount || 0;
+    const rawNewAvg = (currentAvg * currentSolveCount + timeTaken) / (currentSolveCount + 1);
     const newAvgSolveTime = alreadySolved
       ? currentAvg
-      : Math.round((currentAvg * currentSolveCount + timeTaken) / (currentSolveCount + 1));
+      : (Number.isFinite(rawNewAvg) ? Math.round(rawNewAvg) : 0);
 
     // Write submission log
     const submissionRef = db.collection("submissions").doc();
@@ -321,21 +330,38 @@ module.exports = functions.https.onCall(async (data, context) => {
       isPracticeRe_solve: alreadySolved,
     });
 
-    // Update user
+    // Update user — every value MUST be non-undefined or Firestore crashes
+    const safeEloGain = finalEloGain || 0;
     const userUpdate = {
-      elo: FieldValue.increment(finalEloGain),
-      weeklyElo: FieldValue.increment(finalEloGain),
-      monthlyElo: FieldValue.increment(finalEloGain),
+      elo: FieldValue.increment(safeEloGain),
+      weeklyElo: FieldValue.increment(safeEloGain),
+      monthlyElo: FieldValue.increment(safeEloGain),
       correctSubmissions: FieldValue.increment(1),
-      lastActiveDate: streakResult.lastActiveDate,
-      currentStreak: streakResult.currentStreak,
-      maxStreak: streakResult.maxStreak,
+      lastActiveDate: streakResult.lastActiveDate || null,
+      currentStreak: streakResult.currentStreak || 0,
+      maxStreak: streakResult.maxStreak || 0,
     };
     if (!alreadySolved) {
       userUpdate.totalSolved = FieldValue.increment(1);
-      userUpdate[`solvedByDifficulty.${challenge.difficulty}`] = FieldValue.increment(1);
+      if (challenge.difficulty) {
+        userUpdate[`solvedByDifficulty.${challenge.difficulty}`] = FieldValue.increment(1);
+      }
     }
     tx.update(userRef, userUpdate);
+
+    // Sync publicProfiles for leaderboard
+    const pubRef = db.collection("publicProfiles").doc(userId);
+    const pubUpdate = {
+      elo: FieldValue.increment(safeEloGain),
+      weeklyElo: FieldValue.increment(safeEloGain),
+      monthlyElo: FieldValue.increment(safeEloGain),
+      currentStreak: streakResult.currentStreak || 0,
+      maxStreak: streakResult.maxStreak || 0,
+    };
+    if (!alreadySolved) {
+      pubUpdate.totalSolved = FieldValue.increment(1);
+    }
+    tx.update(pubRef, pubUpdate);
 
     // Update challenge stats
     if (!alreadySolved) {
@@ -381,10 +407,10 @@ module.exports = functions.https.onCall(async (data, context) => {
     eloChange: finalEloGain,
     newElo: (user.elo || 0) + finalEloGain,
     breakdown: {
-      baseElo: eloGainResult.baseElo,
-      timeBonus: eloGainResult.timeBonus,
-      hintPenalty: eloGainResult.hintPenalty,
-      attemptPenalty: eloGainResult.attemptPenalty,
+      baseElo: eloGainResult.baseElo || 0,
+      timeBonus: eloGainResult.timeBonus || 1,
+      hintPenalty: eloGainResult.hintPenalty || 1,
+      attemptPenalty: eloGainResult.attemptPenalty || 1,
     },
     streak: {
       current: streakResult.currentStreak,

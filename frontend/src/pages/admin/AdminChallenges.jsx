@@ -27,7 +27,7 @@ const MEDIA_TYPES   = ["none","image","video","audio","file"];
 
 const EMPTY_FORM = {
   title: "", description: "", type: "standard", difficulty: "easy", category: "search",
-  basePoints: 100, tags: "", visibility: "draft", flag: "", hints: [""],
+  basePoints: 100, tags: "", visibility: "draft", flag: "", flagFormat: "", hints: [""],
   timeLimit: "", mediaType: "none", mediaURL: "",
 };
 
@@ -90,10 +90,12 @@ export default function AdminChallenges() {
       tags:        (ch.tags || []).join(", "),
       visibility:  ch.visibility  || "draft",
       flag:        ch.rawFlag     || "",  // Show saved flag to admin
+      flagFormat:  ch.flagFormat   || "",
       hints:       ch.hints?.length ? ch.hints : [""],
       timeLimit:   ch.timeLimit   || "",
       mediaType:   ch.mediaType   || "none",
       mediaURL:    ch.mediaURL    || "",
+      mediaFilename: ch.mediaFilename || "",
     });
     setEditTarget(ch);
     setError("");
@@ -111,14 +113,12 @@ export default function AdminChallenges() {
   function removeHint(i){ setForm(f => ({ ...f, hints: f.hints.filter((_, j) => j !== i) })); }
 
   async function handleMediaUpload(file) {
-    if (!file) return "";
-    // Store original filename
-    setField("mediaFilename", file.name);
+    if (!file) return { url: "", filename: "" };
     const { url } = await uploadToCloudinary(file, {
       folder: "osint-arena/challenges",
       onProgress: setUploadProgress,
     });
-    return url;
+    return { url, filename: file.name };
   }
 
   async function handleSave() {
@@ -131,8 +131,11 @@ export default function AdminChallenges() {
     try {
       // Upload media if file selected
       let mediaURL = form.mediaURL;
+      let mediaFilename = form.mediaFilename || null;
       if (fileRef.current?.files[0]) {
-        mediaURL = await handleMediaUpload(fileRef.current.files[0]);
+        const uploadResult = await handleMediaUpload(fileRef.current.files[0]);
+        mediaURL = uploadResult.url;
+        mediaFilename = uploadResult.filename;
       }
 
       const tags = form.tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -151,7 +154,8 @@ export default function AdminChallenges() {
         timeLimit:   form.timeLimit ? Number(form.timeLimit) : null,
         mediaType:   form.mediaType,
         mediaURL:    mediaURL || null,
-        mediaFilename: form.mediaFilename || null,
+        mediaFilename: mediaFilename,
+        flagFormat:  form.flagFormat.trim() || null,
         isActive:    form.visibility === "public",
         freeForAll:  form.difficulty === "easy",
         isFreeThisWeek: false,
@@ -387,6 +391,15 @@ export default function AdminChallenges() {
                 <span className="ac-hint">Stored as SHA-256 hash alongside raw value (admin-only visibility)</span>
               </div>
 
+              {/* Flag Format Hint */}
+              <div className="ac-field">
+                <label>Flag Format (shown to users as a hint)</label>
+                <input className="ac-input" type="text"
+                  value={form.flagFormat} onChange={e => setField("flagFormat", e.target.value)}
+                  placeholder="e.g. FLAG{****** *****}" />
+                <span className="ac-hint">Helps users know the expected format. Leave empty to hide.</span>
+              </div>
+
               {/* Hints */}
               <div className="ac-field">
                 <label>Hints</label>
@@ -413,7 +426,7 @@ export default function AdminChallenges() {
 
               {form.mediaType !== "none" && (
                 <div className="ac-field">
-                  <label>Upload Media</label>
+                  <label>{form.mediaURL ? "Replace Media" : "Upload Media"}</label>
                   <input ref={fileRef} type="file" className="ac-file-input"
                     accept={
                       form.mediaType === "image" ? "image/*" :
@@ -427,8 +440,35 @@ export default function AdminChallenges() {
                       <span>{uploadProgress}%</span>
                     </div>
                   )}
+
+                  {/* Current media preview */}
                   {form.mediaURL && (
-                    <span className="ac-hint">Current: {form.mediaURL.slice(0, 60)}...</span>
+                    <div className="ac-media-preview">
+                      <div className="ac-media-preview-header">
+                        <span className="ac-hint">Current media:</span>
+                        <a href={form.mediaURL} target="_blank" rel="noopener noreferrer"
+                          className="ac-media-preview-link">Open in new tab ↗</a>
+                      </div>
+                      {form.mediaType === "image" && (
+                        <img src={form.mediaURL} alt="Current challenge media"
+                          className="ac-media-preview-img"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      )}
+                      {form.mediaType === "video" && (
+                        <video controls className="ac-media-preview-video" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 6 }}>
+                          <source src={form.mediaURL} />
+                        </video>
+                      )}
+                      {form.mediaType === "audio" && (
+                        <audio controls style={{ width: '100%', marginTop: 4 }}>
+                          <source src={form.mediaURL} />
+                        </audio>
+                      )}
+                      {form.mediaFilename && (
+                        <span className="ac-hint" style={{ marginTop: 4 }}>Filename: {form.mediaFilename}</span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

@@ -37,8 +37,7 @@ const DIFF_CONFIG = {
  *
  * Rules:
  *  - Easy:           always free
- *  - Medium:         free if challenge.freeForAll === true OR challengeIndex < 30% of total
- *                    (backend marks the free 30% via challenge.freeForAll flag)
+ *  - Medium:         always free
  *  - Hard:           locked UNLESS challenge.weeklyFreeId matches the current
  *                    week's free hard challenge (set by a weekly Cloud Function)
  *  - Pro users:      nothing is locked
@@ -46,7 +45,7 @@ const DIFF_CONFIG = {
 function isChallengeLocked(challenge, isPro, weeklyFreeHardId) {
   if (isPro) return false;
   if (challenge.difficulty === "easy") return false;
-  if (challenge.difficulty === "medium") return !challenge.freeForAll;
+  if (challenge.difficulty === "medium") return false;
   if (challenge.difficulty === "hard") return challenge.id !== weeklyFreeHardId;
   return false;
 }
@@ -330,9 +329,7 @@ export default function Challenges() {
                     style={{ "--card-i": idx }}
                     onClick={() => locked
                       ? navigate("/pricing", { state: { reason: "pro_required" } })
-                      : challenge.type === "investigation"
-                        ? navigate(`/investigate/${challenge.id}`)
-                        : navigate(`/challenges/${challenge.slug}`)
+                      : navigate(`/challenges/${challenge.slug}`)
                     }
                   >
                     {/* Top row: status + chips */}

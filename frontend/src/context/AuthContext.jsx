@@ -258,6 +258,7 @@ export function AuthProvider({ children }) {
   const isAuthenticated = Boolean(currentUser);
   const isAdmin         = userProfile?.role === "admin";
   const isMod           = userProfile?.role === "mod" || userProfile?.role === "moderator" || isAdmin;
+  const isContestMod    = userProfile?.role === "contest_mod" || isMod;
   const isPro           = isAdmin || claims?.plan === "pro";
 
   const canSolveToday = useCallback(() => {
@@ -277,11 +278,13 @@ export function AuthProvider({ children }) {
   const canEditChallenge    = isMod;
   const canDeleteChallenge  = isAdmin; // permanent delete
   const canManageUsers      = isAdmin;
+  const canManageContests   = isContestMod; // contest_mod, mod, or admin
 
   const value = {
     currentUser, userProfile, loading, profileLoading, claimsReady, claims,
-    isAuthenticated, isVerified, isAdmin, isMod, isPro,
+    isAuthenticated, isVerified, isAdmin, isMod, isContestMod, isPro,
     canCreateChallenge, canEditChallenge, canDeleteChallenge, canManageUsers,
+    canManageContests,
     canSolveToday, dailySolvesRemaining,
     login, loginWithGoogle, register, logout,
     resetPassword, resendVerification, refreshUser, syncClaims,

@@ -5,6 +5,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import NotificationBell from "./NotificationBell";
 import "./Navbar.css";
 
 // ── SVG Icon set ──────────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ const Icons = {
 };
 
 export default function Navbar() {
-  const { currentUser, userProfile, isAdmin, isPro, logout } = useAuth();
+  const { currentUser, userProfile, isAdmin, isMod, isContestMod, isPro, logout } = useAuth();
   const navigate = useNavigate();
 
   const [theme, setTheme] = useState(() =>
@@ -103,6 +104,8 @@ export default function Navbar() {
   const streak   = userProfile?.currentStreak ?? 0;
   const username = userProfile?.username ?? currentUser?.email?.split("@")[0] ?? "Analyst";
   const avatarLetter = username.charAt(0).toUpperCase();
+  const userRole = userProfile?.role || "user";
+  const roleLabel = userRole === "admin" ? "Admin" : userRole === "mod" ? "Mod" : userRole === "contest_mod" ? "Contest Mod" : null;
 
   return (
     <nav className="navbar" role="navigation" aria-label="Main navigation">
@@ -138,20 +141,24 @@ export default function Navbar() {
           <NavLink to="/leaderboard" className={({isActive})=>`navbar-link ${isActive?"navbar-link--active":""}`}>
             <Icons.Leaderboard /><span>Leaderboard</span>
           </NavLink>
-          <NavLink to="/contests" className={({isActive})=>`navbar-link ${isActive?"navbar-link--active":""} ${!isPro?"navbar-link--locked":""}`}>
+          <NavLink to="/contests" className={({isActive})=>`navbar-link ${isActive?"navbar-link--active":""}`}>
             <Icons.Contests />
             <span>Contests</span>
-            {!isPro && <span className="navbar-pro-badge">PRO</span>}
           </NavLink>
-          {isAdmin && (
+          {(isAdmin || isMod || isContestMod) && (
             <NavLink to="/admin" className={({isActive})=>`navbar-link navbar-link--admin ${isActive?"navbar-link--active":""}`}>
-              <Icons.Admin /><span>Admin</span>
+              <Icons.Admin /><span>{userRole === "admin" ? "Admin" : userRole === "mod" ? "Mod" : "Contest Mod"}</span>
             </NavLink>
           )}
         </div>
 
         {/* ── Right side ─────────────────────────────────────────────── */}
         <div className="navbar-right">
+
+          {/* Notification bell */}
+          {currentUser && (
+            <NotificationBell />
+          )}
 
           {/* Streak chip */}
           {streak > 0 && (
@@ -258,7 +265,7 @@ export default function Navbar() {
           <NavLink to="/contests"   className="navbar-mobile-link" onClick={()=>setMenuOpen(false)}>
             <Icons.Contests /><span>Contests</span>{!isPro && <span className="navbar-pro-badge">PRO</span>}
           </NavLink>
-          {isAdmin && <NavLink to="/admin" className="navbar-mobile-link" onClick={()=>setMenuOpen(false)}><Icons.Admin /><span>Admin</span></NavLink>}
+          {(isAdmin || isContestMod) && <NavLink to="/admin" className="navbar-mobile-link" onClick={()=>setMenuOpen(false)}><Icons.Admin /><span>Admin</span></NavLink>}
           <div className="navbar-mobile-divider"/>
           <NavLink to="/profile" className="navbar-mobile-link" onClick={()=>setMenuOpen(false)}><Icons.Profile /><span>My Profile</span></NavLink>
           <button className="navbar-mobile-link navbar-mobile-link--danger" onClick={handleLogout}><Icons.Signout /><span>Sign out</span></button>

@@ -211,6 +211,18 @@ export default function AdminFlags() {
                   <span className="admin-kv-label">Type</span>
                   <span className="admin-kv-value">{selectedFlag.type || "Manual"}</span>
                 </div>
+                {selectedFlag.contestTitle && (
+                  <div className="admin-kv-row">
+                    <span className="admin-kv-label">Contest</span>
+                    <span className="admin-kv-value">{selectedFlag.contestTitle}</span>
+                  </div>
+                )}
+                {selectedFlag.details && (
+                  <div className="admin-kv-row">
+                    <span className="admin-kv-label">Details</span>
+                    <span className="admin-kv-value" style={{ color: "var(--color-warning)" }}>{selectedFlag.details}</span>
+                  </div>
+                )}
                 <div className="admin-kv-row">
                   <span className="admin-kv-label">Warnings</span>
                   <span className="admin-kv-value">{selectedFlag.warningCount || 0}</span>

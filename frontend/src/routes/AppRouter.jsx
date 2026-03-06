@@ -30,6 +30,8 @@ const AdminUsers       = lazy(() => import("../pages/admin/AdminUsers"));
 const AdminFlags       = lazy(() => import("../pages/admin/AdminFlags"));
 const AdminChallenges  = lazy(() => import("../pages/admin/AdminChallenges"));
 const AdminAnalytics   = lazy(() => import("../pages/admin/AdminAnalytics"));
+const AdminContests    = lazy(() => import("../pages/admin/AdminContests"));
+const AdminBroadcast   = lazy(() => import("../pages/admin/AdminBroadcast"));
 
 import PrivateRoute from "./PrivateRoute";
 import ProRoute     from "./ProRoute";
@@ -48,6 +50,13 @@ function RootRedirect() {
   const { isAuthenticated, loading } = useAuth();
   if (loading) return <PageLoader />;
   return <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />;
+}
+
+function AdminIndexRedirect() {
+  const { userProfile } = useAuth();
+  const role = userProfile?.role || "user";
+  if (role === "contest_mod") return <Navigate to="/admin/contests" replace />;
+  return <Navigate to="/admin/dashboard" replace />;
 }
 
 export default function AppRouter() {
@@ -72,17 +81,19 @@ export default function AppRouter() {
           <Route path="/profile/:username" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="/leaderboard"    element={<PrivateRoute><Leaderboard /></PrivateRoute>} />
 
-          <Route path="/contests"           element={<ProRoute><Contests /></ProRoute>} />
-          <Route path="/contests/:contestId" element={<ProRoute><ContestSolve /></ProRoute>} />
+          <Route path="/contests"           element={<PrivateRoute><Contests /></PrivateRoute>} />
+          <Route path="/contests/:contestId" element={<PrivateRoute><ContestSolve /></PrivateRoute>} />
 
           {/* Admin panel — accessible to admin + moderator */}
           <Route path="/admin" element={<ModRoute><AdminLayout /></ModRoute>}>
-            <Route index element={<Navigate to="/admin/dashboard" replace />} />
+            <Route index element={<AdminIndexRedirect />} />
             <Route path="dashboard"  element={<AdminDashboard />} />
             <Route path="analytics"  element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
             <Route path="challenges" element={<AdminChallenges />} />
+            <Route path="contests"   element={<AdminContests />} />
             <Route path="users"      element={<AdminRoute><AdminUsers /></AdminRoute>} />
             <Route path="flags"      element={<AdminFlags />} />
+            <Route path="broadcast"  element={<AdminRoute><AdminBroadcast /></AdminRoute>} />
             <Route path="*"          element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
 

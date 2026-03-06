@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   collection, query, where, orderBy, limit,
-  getDocs, doc, getDoc
+  getDocs, doc, getDoc, Timestamp
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db } from "../firebase/config";
@@ -39,6 +39,8 @@ export default function Contests() {
   const [registered, setRegistered]     = useState(new Set()); // contestIds user is in
   const [regError, setRegError]         = useState("");
   const [regSuccess, setRegSuccess]     = useState("");
+  const [accessCodeInput, setAccessCodeInput] = useState("");
+  const [showCodePrompt, setShowCodePrompt]   = useState(null); // contestId needing code
 
   useEffect(() => {
     loadContests();
@@ -51,17 +53,17 @@ export default function Contests() {
   async function loadContests() {
     setLoading(true);
     try {
-      const now = new Date();
+      const now = Timestamp.now();
       let q;
 
       if (tab === "live") {
+        // Fetch contests that have started, filter endTime client-side
         q = query(
           collection(db, "contests"),
           where("isActive",  "==", true),
           where("startTime", "<=", now),
-          where("endTime",   ">",  now),
           orderBy("startTime", "desc"),
-          limit(10)
+          limit(20)
         );
       } else if (tab === "upcoming") {
         q = query(
@@ -81,9 +83,20 @@ export default function Contests() {
       }
 
       const snap = await getDocs(q);
-      setContests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      let results = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // Client-side filter for live: endTime must be in the future
+      if (tab === "live") {
+        const nowMs = Date.now();
+        results = results.filter(c => {
+          const endMs = c.endTime?.toMillis?.() ?? 0;
+          return endMs > nowMs;
+        });
+      }
+
+      setContests(results);
     } catch (err) {
-      console.error("loadContests:", err);
+      console.error("loadContests error:", err);
       setContests([]);
     } finally {
       setLoading(false);
@@ -108,17 +121,29 @@ export default function Contests() {
     } catch {}
   }
 
-  async function handleRegister(contestId) {
+  async function handleRegister(contestId, contest) {
     if (!currentUser) { navigate("/login"); return; }
-    if (!isPro) { navigate("/pricing", { state: { reason: "pro_required" } }); return; }
+
+    // Private contest — prompt for access code first
+    if (contest?.contestType === "private" && !showCodePrompt) {
+      setShowCodePrompt(contestId);
+      setAccessCodeInput("");
+      return;
+    }
 
     setRegistering(contestId);
     setRegError("");
     setRegSuccess("");
     try {
-      const res = await registerFn({ contestId });
+      const payload = { contestId };
+      if (contest?.contestType === "private") {
+        payload.accessCode = accessCodeInput.trim();
+      }
+      const res = await registerFn(payload);
       setRegistered(prev => new Set([...prev, contestId]));
       setRegSuccess(`Registered for "${res.data.title}"! Contest starts ${formatRelativeTime(new Date(res.data.startTime))}.`);
+      setShowCodePrompt(null);
+      setAccessCodeInput("");
     } catch (err) {
       setRegError(err.message || "Registration failed.");
     } finally {
@@ -141,14 +166,6 @@ export default function Contests() {
             <h1 className="contests-title">Contests</h1>
             <p className="contests-subtitle">
               Timed OSINT competitions with ELO rewards.
-              {!isPro && (
-                <span className="contests-pro-note">
-                  {" "}
-                  <Link to="/pricing" className="contests-upgrade-link">
-                    Pro required →
-                  </Link>
-                </span>
-              )}
             </p>
           </div>
 
@@ -218,7 +235,10 @@ export default function Contests() {
                 isPro={isPro}
                 isRegistered={registered.has(contest.id)}
                 isRegistering={registering === contest.id}
-                onRegister={() => handleRegister(contest.id)}
+                showCodePrompt={showCodePrompt === contest.id}
+                accessCodeInput={accessCodeInput}
+                onAccessCodeChange={setAccessCodeInput}
+                onRegister={() => handleRegister(contest.id, contest)}
                 onEnter={() => navigate(`/contests/${contest.id}`)}
               />
             ))}
@@ -232,7 +252,7 @@ export default function Contests() {
 
 // ── ContestCard ───────────────────────────────────────────────────────────────
 
-function ContestCard({ contest, idx, tab, isPro, isRegistered, isRegistering, onRegister, onEnter }) {
+function ContestCard({ contest, idx, tab, isPro, isRegistered, isRegistering, showCodePrompt, accessCodeInput, onAccessCodeChange, onRegister, onEnter }) {
   const diff    = DIFF_CONFIG[contest.difficulty] || DIFF_CONFIG.mixed;
   const now     = Date.now();
   const startMs = contest.startTime?.toMillis?.() ?? 0;
@@ -273,7 +293,12 @@ function ContestCard({ contest, idx, tab, isPro, isRegistered, isRegistering, on
             )}
           </div>
 
-          <h2 className="contest-card-title">{contest.title}</h2>
+          <h2 className="contest-card-title">
+            {contest.title}
+            {contest.contestType === "private" && (
+              <span style={{ fontSize: 11, color: "var(--color-text-muted)", marginLeft: 8, fontWeight: 400 }}>🔒 Private</span>
+            )}
+          </h2>
 
           {contest.description && (
             <p className="contest-card-desc">{contest.description}</p>
@@ -326,18 +351,31 @@ function ContestCard({ contest, idx, tab, isPro, isRegistered, isRegistering, on
             <div className="contest-action-registered">
               <span>✓</span> Registered
             </div>
-          ) : !isPro ? (
-            <Link to="/pricing" className="contest-action-btn contest-action-btn--upgrade">
-              Pro Required ↗
-            </Link>
           ) : regOpen ? (
-            <button
-              className="contest-action-btn contest-action-btn--register"
-              onClick={onRegister}
-              disabled={isRegistering}
-            >
-              {isRegistering ? "Registering..." : "Register →"}
-            </button>
+            <>
+              {showCodePrompt && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="Enter access code"
+                    value={accessCodeInput}
+                    onChange={e => onAccessCodeChange(e.target.value)}
+                    style={{
+                      padding: "6px 10px", borderRadius: 6, border: "1px solid var(--color-border)",
+                      background: "var(--color-bg-secondary)", color: "var(--color-text)",
+                      fontFamily: "var(--font-mono)", fontSize: 12,
+                    }}
+                  />
+                </div>
+              )}
+              <button
+                className="contest-action-btn contest-action-btn--register"
+                onClick={onRegister}
+                disabled={isRegistering || (showCodePrompt && !accessCodeInput.trim())}
+              >
+                {isRegistering ? "Registering..." : showCodePrompt ? "Submit Code & Register →" : "Register →"}
+              </button>
+            </>
           ) : (
             <div className="contest-action-locked">
               Registration closed

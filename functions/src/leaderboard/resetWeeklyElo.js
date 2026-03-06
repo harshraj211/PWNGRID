@@ -14,6 +14,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -50,7 +51,7 @@ module.exports = functions.pubsub
         type: "weekly",
         weekLabel,
         snapshot,
-        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        generatedAt: FieldValue.serverTimestamp(),
       });
 
       console.log(`resetWeeklyElo: snapshot saved as weekly_${weekLabel}`);
@@ -74,6 +75,8 @@ module.exports = functions.pubsub
         const batch = db.batch();
         snap.docs.forEach((doc) => {
           batch.update(doc.ref, { weeklyElo: 0 });
+          // Sync publicProfiles
+          batch.update(db.collection("publicProfiles").doc(doc.id), { weeklyElo: 0 });
         });
         await batch.commit();
 
@@ -90,7 +93,7 @@ module.exports = functions.pubsub
         weekLabel,
         totalUsersReset: totalReset,
         durationMs: Date.now() - startTime,
-        executedAt: admin.firestore.FieldValue.serverTimestamp(),
+        executedAt: FieldValue.serverTimestamp(),
       });
 
       console.log(`resetWeeklyElo: done. Reset ${totalReset} users in ${Date.now() - startTime}ms`);

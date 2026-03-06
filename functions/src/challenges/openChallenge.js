@@ -72,23 +72,42 @@ module.exports = functions.https.onCall(async (data, context) => {
 
   const alreadySolved = !existingSubmission.empty;
 
-  // ── 5. Write / overwrite activeSession ────────────────────────────────────────
+  // ── 5. Write activeSession — preserve existing openTimestamp ────────────────
   // Composite key: userId_challengeId
   const sessionId = `${userId}_${challengeId}`;
-  const openTimestamp = Date.now();
+  const sessionRef = db.collection("activeSessions").doc(sessionId);
+  const existingSession = await sessionRef.get();
+
+  let openTimestamp;
+
+  if (existingSession.exists) {
+    const existingData = existingSession.data();
+    const isExpired = Date.now() > (existingData.expiresAt || 0);
+
+    if (!isExpired) {
+      // Session still valid — keep original openTimestamp (prevents timer reset on re-render)
+      openTimestamp = existingData.openTimestamp;
+    } else {
+      // Expired — create fresh session
+      openTimestamp = Date.now();
+    }
+  } else {
+    // No existing session — create new
+    openTimestamp = Date.now();
+  }
+
   const expiresAt = openTimestamp + SESSION_TTL_MS;
 
-  await db
-    .collection("activeSessions")
-    .doc(sessionId)
-    .set({
-      userId,
-      challengeId,
-      openTimestamp,
-      expiresAt,
-      hintUsed: false, // SECURITY: hint state tracked server-side only
-      expiresAtTimestamp: Timestamp.fromMillis(expiresAt),
-    });
+  await sessionRef.set({
+    userId,
+    challengeId,
+    openTimestamp,
+    expiresAt,
+    hintUsed: existingSession.exists && !((Date.now()) > (existingSession.data().expiresAt || 0))
+      ? (existingSession.data().hintUsed || false)
+      : false,
+    expiresAtTimestamp: Timestamp.fromMillis(expiresAt),
+  });
 
   return {
     success: true,
@@ -99,6 +118,7 @@ module.exports = functions.https.onCall(async (data, context) => {
       title: challenge.title,
       difficulty: challenge.difficulty,
       expectedTime: challenge.expectedTime,
+      flagFormat: challenge.flagFormat || null, // Hint for users on expected flag format
       // Never return: answerHash, hint (unless separately requested), tags
     },
   };

@@ -35,8 +35,12 @@ module.exports = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
   }
 
-  // Verify admin role from custom claim
-  const tokenRole = context.auth.token.role;
+  // Check JWT custom claim first, fallback to Firestore role field
+  let tokenRole = context.auth.token.role;
+  if (tokenRole !== "admin") {
+    const callerSnap = await db.collection("users").doc(context.auth.uid).get();
+    if (callerSnap.exists) tokenRole = callerSnap.data().role || "user";
+  }
   if (tokenRole !== "admin") {
     throw new functions.https.HttpsError(
       "permission-denied",

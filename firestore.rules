@@ -24,6 +24,7 @@ service cloud.firestore {
     }
     function isAdmin()    { return isAuth() && hasRole('admin'); }
     function isMod()      { return isAuth() && (hasRole('mod') || hasRole('moderator') || isAdmin()); }
+    function isContestMod() { return isAuth() && (hasRole('contest_mod') || isMod()); }
     function isVerified() { return isAuth() && request.auth.token.email_verified == true; }
     function hasOnly(fields) { return request.resource.data.keys().hasOnly(fields); }
 
@@ -84,12 +85,16 @@ service cloud.firestore {
       allow read: if isVerified()
                      && resource.data.isActive == true
                      && resource.data.isDeleted == false;
+      allow read: if isVerified()
+                     && resource.data.visibility == "contest"
+                     && resource.data.isDeleted == false;
       allow read: if isMod();
-      allow create: if isMod() && isVerified()
+      allow read: if isContestMod();
+      allow create: if (isMod() || isContestMod()) && isVerified()
         && request.resource.data.keys().hasAll(['title','description','difficulty','createdBy'])
         && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isMod() && isVerified();
-      allow delete: if isAdmin();
+      allow update: if isContestMod() && isVerified();
+      allow delete: if isContestMod() && isVerified();
 
       match /secrets/{secretId} {
         allow read:  if false;
@@ -127,22 +132,33 @@ service cloud.firestore {
     // ── Contests ──────────────────────────────────────────────────────────────
     match /contests/{contestId} {
       allow read:  if isAuth();
-      allow write: if isAdmin();
+      allow write: if isContestMod();
       match /participants/{userId} {
-        allow read:  if isOwner(userId) || isMod();
+        allow read:  if isAuth(); // scoreboard is public to all authenticated users
         allow write: if false;
         match /attempts/{challengeId} {
           allow read:  if isOwner(userId) || isMod();
           allow write: if false;
         }
       }
+      match /abuseFlags/{userId} {
+        allow read:  if isAdmin() || isMod();
+        allow write: if false;
+      }
     }
 
     // ── Contest Submissions ───────────────────────────────────────────────────
     match /contestSubmissions/{submissionId} {
-      allow read:  if isAuth() && resource.data.userId == request.auth.uid;
-      allow read:  if isAdmin();
+      allow read:  if isAuth(); // participants need to read for race chart
       allow write: if false;
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+    match /notifications/{userId}/items/{notifId} {
+      allow read:   if isOwner(userId);
+      allow update: if isOwner(userId) && hasOnly(['read']);
+      allow create: if false; // server-side only
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     // ── Flags ─────────────────────────────────────────────────────────────────

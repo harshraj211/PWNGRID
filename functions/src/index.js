@@ -95,6 +95,9 @@ exports.adjustElo    = require("./admin/adjustElo");
 exports.resolveFlag  = require("./admin/resolveFlag");
 exports.getAnalytics = require("./admin/getAnalytics");
 
+const { sendAdminNotification } = require("./admin/sendAdminNotification");
+exports.sendAdminNotification   = sendAdminNotification;
+
 // ────────────────────────────────────────────────────────────────────────────
 // CERTIFICATION  (v1 · HTTPS Callable — Pro only)
 // checkCertEligibility → checks if user has solved all challenges in a tier
@@ -104,6 +107,10 @@ exports.checkCertEligibility = require("./certifications/checkCertEligibility");
 
 // Storage validation
 exports.validateUpload = require("./storage/validateUpload");
+
+// Download proxy (for Cloudinary raw files that return 401)
+const { proxyDownload } = require("./storage/proxyDownload");
+exports.proxyDownload  = proxyDownload;
 
 // Investigation board
 exports.verifyGraphEdge      = require("./challenges/verifyGraphEdge");

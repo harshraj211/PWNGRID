@@ -21,6 +21,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -31,7 +32,13 @@ module.exports = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
   }
-  if (context.auth.token.role !== "admin") {
+  // Check JWT custom claim first, fallback to Firestore role field
+  let callerRole = context.auth.token.role;
+  if (callerRole !== "admin") {
+    const callerSnap = await db.collection("users").doc(context.auth.uid).get();
+    if (callerSnap.exists) callerRole = callerSnap.data().role || "user";
+  }
+  if (callerRole !== "admin") {
     throw new functions.https.HttpsError("permission-denied", "Admin role required.");
   }
 
@@ -72,10 +79,18 @@ module.exports = functions.https.onCall(async (data, context) => {
     // Also adjust weekly/monthly proportionally if adjustment is positive
     // If negative (punishment), only reduce global ELO
     ...(adjustment > 0 && {
-      weeklyElo:  admin.firestore.FieldValue.increment(adjustment),
-      monthlyElo: admin.firestore.FieldValue.increment(adjustment),
+      weeklyElo:  FieldValue.increment(adjustment),
+      monthlyElo: FieldValue.increment(adjustment),
     }),
   });
+
+  // Sync publicProfiles for leaderboard
+  const pubUpdate = { elo: newElo };
+  if (adjustment > 0) {
+    pubUpdate.weeklyElo = FieldValue.increment(adjustment);
+    pubUpdate.monthlyElo = FieldValue.increment(adjustment);
+  }
+  batch.update(db.collection("publicProfiles").doc(targetUserId), pubUpdate);
 
   // Log to adminLogs
   const logRef = db.collection("adminLogs").doc();
@@ -88,7 +103,7 @@ module.exports = functions.https.onCall(async (data, context) => {
     newElo,
     reason: reason.trim(),
     performedBy: context.auth.uid,
-    performedAt: admin.firestore.FieldValue.serverTimestamp(),
+    performedAt: FieldValue.serverTimestamp(),
   });
 
   await batch.commit();

@@ -117,6 +117,13 @@ module.exports = functions.https.onCall(async (data, context) => {
       monthlyElo: FieldValue.increment(ELO_PER_EDGE),
     });
 
+    // Sync publicProfiles for leaderboard
+    tx.update(db.collection("publicProfiles").doc(userId), {
+      elo:        FieldValue.increment(ELO_PER_EDGE),
+      weeklyElo:  FieldValue.increment(ELO_PER_EDGE),
+      monthlyElo: FieldValue.increment(ELO_PER_EDGE),
+    });
+
     return { correct: true, eloAwarded: ELO_PER_EDGE, totalCorrect, isComplete };
   });
 

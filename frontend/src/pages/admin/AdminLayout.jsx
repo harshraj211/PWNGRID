@@ -13,16 +13,19 @@ import Navbar from "../../components/layout/Navbar";
 import "./AdminLayout.css";
 
 const ADMIN_NAV = [
-  { to: "/admin/dashboard",  label: "Dashboard",  icon: "⊞" },
-  { to: "/admin/analytics",  label: "Analytics",  icon: "◉" },
-  { to: "/admin/challenges", label: "Challenges",  icon: "◈" },
-  { to: "/admin/contests",   label: "Contests",    icon: "⬡" },
-  { to: "/admin/users",      label: "Users",       icon: "⊙" },
-  { to: "/admin/flags",      label: "Flags",       icon: "⚑" },
+  { to: "/admin/dashboard",   label: "Dashboard",   icon: "⊞", roles: ["admin", "mod"] },
+  { to: "/admin/analytics",   label: "Analytics",   icon: "◉", roles: ["admin", "mod"] },
+  { to: "/admin/challenges",  label: "Challenges",  icon: "◈", roles: ["admin", "mod"] },
+  { to: "/admin/contests",    label: "Contests",    icon: "⬡", roles: ["admin", "mod", "contest_mod"] },
+  { to: "/admin/users",       label: "Users",       icon: "⊙", roles: ["admin"] },
+  { to: "/admin/flags",       label: "Flags",       icon: "⚑", roles: ["admin", "mod"] },
+  { to: "/admin/broadcast",   label: "Broadcast",   icon: "📢", roles: ["admin"] },
 ];
 
 export default function AdminLayout() {
-  const { userProfile } = useAuth();
+  const { userProfile, isAdmin, isMod, isContestMod } = useAuth();
+  const userRole = userProfile?.role || "user";
+  const visibleNav = ADMIN_NAV.filter(item => item.roles.includes(userRole));
 
   return (
     <div className="admin-shell">
@@ -39,7 +42,7 @@ export default function AdminLayout() {
           </div>
 
           <nav className="admin-nav">
-            {ADMIN_NAV.map(({ to, label, icon }) => (
+            {visibleNav.map(({ to, label, icon }) => (
               <NavLink
                 key={to}
                 to={to}

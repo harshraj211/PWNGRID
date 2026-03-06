@@ -20,6 +20,8 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
+const { getAuth } = require("firebase-admin/auth");
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -32,7 +34,12 @@ module.exports = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
   }
-  const role = context.auth.token.role;
+  // Check JWT custom claim first, fallback to Firestore role field
+  let role = context.auth.token.role;
+  if (role !== "admin" && role !== "moderator") {
+    const callerSnap = await db.collection("users").doc(context.auth.uid).get();
+    if (callerSnap.exists) role = callerSnap.data().role || "user";
+  }
   if (role !== "admin" && role !== "moderator") {
     throw new functions.https.HttpsError("permission-denied", "Admin or moderator role required.");
   }
@@ -71,7 +78,7 @@ module.exports = functions.https.onCall(async (data, context) => {
 
   // ── 4. Execute action ─────────────────────────────────────────────────────
   const batch = db.batch();
-  const resolvedAt = admin.firestore.FieldValue.serverTimestamp();
+  const resolvedAt = FieldValue.serverTimestamp();
 
   // Update flag as resolved
   batch.update(flagRef, {
@@ -88,7 +95,7 @@ module.exports = functions.https.onCall(async (data, context) => {
       // False positive — clear the flag from user doc
       batch.update(userRef, {
         isFlagged: false,
-        flagReason: admin.firestore.FieldValue.delete(),
+        flagReason: FieldValue.delete(),
       });
       break;
 
@@ -96,7 +103,7 @@ module.exports = functions.https.onCall(async (data, context) => {
       // Keep flagged but add a warning record
       batch.update(userRef, {
         isFlagged: false, // Clear active flag but keep history
-        warningCount: admin.firestore.FieldValue.increment(1),
+        warningCount: FieldValue.increment(1),
         lastWarnedAt: resolvedAt,
         lastWarnReason: flag.reason,
       });
@@ -124,7 +131,7 @@ module.exports = functions.https.onCall(async (data, context) => {
     notes: notes.trim(),
     originalFlagReason: flag.reason,
     performedBy: context.auth.uid,
-    performedAt: admin.firestore.FieldValue.serverTimestamp(),
+    performedAt: FieldValue.serverTimestamp(),
   });
 
   await batch.commit();
@@ -132,7 +139,7 @@ module.exports = functions.https.onCall(async (data, context) => {
   // ── 5. If ban — disable Firebase Auth account ─────────────────────────────
   if (action === "ban") {
     try {
-      await admin.auth().updateUser(targetUserId, { disabled: true });
+      await getAuth().updateUser(targetUserId, { disabled: true });
       console.log(`resolveFlag: banned and disabled auth for user ${targetUserId}`);
     } catch (err) {
       // Non-fatal — Firestore ban is already applied

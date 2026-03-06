@@ -29,7 +29,7 @@ exports.registerForContest = onCall({ enforceAppCheck: false }, async (request) 
   if (!auth.token.email_verified) throw new HttpsError("failed-precondition", "Email not verified.");
 
   const userId = auth.uid;
-  const { contestId } = request.data;
+  const { contestId, accessCode } = request.data;
 
   if (!contestId || typeof contestId !== "string") {
     throw new HttpsError("invalid-argument", "contestId is required.");
@@ -40,9 +40,6 @@ exports.registerForContest = onCall({ enforceAppCheck: false }, async (request) 
   if (!userSnap.exists) throw new HttpsError("not-found", "User profile not found.");
   const user = userSnap.data();
 
-  if (user.plan !== "pro") {
-    throw new HttpsError("permission-denied", "Pro plan required to join contests.");
-  }
   if (user.isBanned) {
     throw new HttpsError("permission-denied", "Account is banned.");
   }
@@ -66,6 +63,13 @@ exports.registerForContest = onCall({ enforceAppCheck: false }, async (request) 
   }
   if (now > regDeadline) {
     throw new HttpsError("failed-precondition", "Registration deadline has passed.");
+  }
+
+  // ── Check access code for private contests ──────────────────────────────
+  if (contest.contestType === "private") {
+    if (!accessCode || accessCode.trim() !== contest.accessCode) {
+      throw new HttpsError("permission-denied", "Invalid access code.");
+    }
   }
 
   // ── Check capacity ───────────────────────────────────────────────────────

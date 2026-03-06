@@ -8,7 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import Spinner from "../components/ui/Spinner";
 
 export default function ModRoute({ children }) {
-  const { isAuthenticated, isVerified, isMod, loading, profileLoading } = useAuth();
+  const { isAuthenticated, isVerified, isMod, isContestMod, loading, profileLoading } = useAuth();
   const location = useLocation();
 
   if (loading || profileLoading) {
@@ -23,7 +23,7 @@ export default function ModRoute({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (!isMod) {
+  if (!isMod && !isContestMod) {
     return <Navigate to="/dashboard" replace />;
   }
 

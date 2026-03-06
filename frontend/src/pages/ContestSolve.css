@@ -165,7 +165,7 @@
 /* ── Main panels ──────────────────────────────────────────────────────────── */
 .cs-panels {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 1fr 1fr;
   flex: 1;
   overflow: hidden;
 }
@@ -188,48 +188,56 @@
   gap: 16px;
 }
 
-/* ── Challenge list ───────────────────────────────────────────────────────── */
-.cs-challenge-list {
+/* ── Challenge tabs (horizontal strip) ────────────────────────────────────── */
+.cs-challenge-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 12px 8px;
+  gap: 4px;
+  padding: 8px 14px;
+  background: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
   flex-shrink: 0;
+  scrollbar-width: thin;
 }
-.cs-challenge-item {
+.cs-challenge-tabs::-webkit-scrollbar { height: 3px; }
+.cs-challenge-tabs::-webkit-scrollbar-track { background: transparent; }
+.cs-challenge-tabs::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+.cs-challenge-tab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: 7px;
+  padding: 7px 14px;
   background: none;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
-.cs-challenge-item:hover { background: var(--color-bg-2); }
-.cs-challenge-item--active {
+.cs-challenge-tab:hover { background: var(--color-bg-2); }
+.cs-challenge-tab--active {
   background: var(--color-surface);
-  border-color: var(--color-border);
+  border-color: var(--color-accent);
 }
-.cs-challenge-item--solved { opacity: 0.7; }
+.cs-challenge-tab--solved { opacity: 0.65; }
+.cs-challenge-tab-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .cs-challenge-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
-}
-.cs-challenge-item-title {
-  flex: 1;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .cs-challenge-check {
   font-size: 11px;
@@ -246,10 +254,10 @@
 /* ── Challenge description ────────────────────────────────────────────────── */
 .cs-description {
   flex: 1;
-  padding: 16px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   overflow-y: auto;
 }
 .cs-description-header {
@@ -413,6 +421,32 @@
 }
 .cs-answer-input::placeholder { color: var(--color-text-subtle); }
 .cs-answer-input:disabled { opacity: 0.5; }
+
+/* Flag format hint */
+.cs-flag-format-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(6,182,212,0.06);
+  border: 1px solid rgba(6,182,212,0.1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+}
+.cs-flag-format-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.cs-flag-format-code {
+  font-size: 13px;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
 
 .cs-ratelimit {
   font-family: var(--font-mono);
@@ -607,9 +641,10 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .cs-panels { grid-template-columns: 1fr; overflow-y: auto; height: auto; }
   .cs-panel  { height: auto; overflow: visible; }
   .cs-shell  { height: auto; overflow: auto; }
   .cs-panel--left { border-right: none; border-bottom: 1px solid var(--color-border); }
+  .cs-challenge-tabs { flex-wrap: wrap; }
 }

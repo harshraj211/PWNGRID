@@ -153,6 +153,13 @@ Environment
 - This file is a snapshot. Update it when you add or heavily modify files so the record stays accurate.
 - If you want, I can generate a checklist of remaining TODOs (tests, CI secrets, production env, more robust anti-cheat rules).
 
+### Recent Fixes (March 2026)
+- **Local Dev Emulator Environment:** Set up local Firebase Emulator suite for functions (`firebase emulators:start --only functions`) coupled with production Firestore using a service account key over `127.0.0.1:5001`. Created `VITE_USE_FUNCTION_EMULATOR` env switch in the frontend to route requests intelligently and handle missing Blaze plan limitations on deploying functions.
+- **Node.js 24 + firebase-admin Compatibility:** Replaced legacy namespace `admin.firestore.Timestamp` and `admin.firestore.FieldValue` access in `openChallenge.js`, `submitAnswer.js`, `completeInvestigation.js`, and `verifyGraphEdge.js` with module imports from `firebase-admin/firestore` to resolve execution crashes (e.g., *Cannot read properties of undefined reading 'fromMillis'*).
+- **Submissions Query Indexes:** Restructured `submitAnswer` and `completeInvestigation` queries to drop `.orderBy("timestamp", "desc")` range conditions alongside `userId` and `challengeId` equality checks. Time-range filtering for the 30-min window and finding the earliest First Blood correct answer evaluates in-memory via iterating snapshot results. Avoids failing precondition "The query requires an index."
+- **Hash Verification Parity:** Extended backend `hashAnswer.js` pipeline to collapse duplicate whitespaces `replace(/\s+/g, " ")` and introduced the global salt `osint-arena-salt-2024` so it strictly aligns with the frontend `hashAnswer.js`.
+- **Admin Visibility and Payload Fields:** Changed Admin backend to correctly use `answerHash` instead of `flagHash` (with a legacy field fallback). Added feature to `AdminChallenges.jsx` to natively store `rawFlag` from Admin entries so that previously entered correct flags are restored securely without re-hashing from scratch upon every Challenge UI edit.
+
 ---
 
 If you want me to include diffs or paste the current contents of any file into this document, tell me which ones and I'll append them.

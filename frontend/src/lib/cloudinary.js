@@ -33,6 +33,7 @@ export async function uploadToCloudinary(file, { folder = "uploads", onProgress 
   formData.append("file",           file);
   formData.append("upload_preset",  UPLOAD_PRESET);
   formData.append("folder",         folder);
+  formData.append("access_mode",    "public");
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

@@ -19,7 +19,7 @@ import { useAuth } from "../context/AuthContext";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import Navbar from "../components/layout/Navbar";
-import WriteupEditor from "../components/writeup/WriteupEditor";
+import WriteupEditor from "../components/writeups/WriteupEditor";
 import "./ChallengeSolve.css";
 
 const openChallengeFn  = httpsCallable(functions, "openChallenge");
@@ -60,12 +60,17 @@ export default function ChallengeSolve() {
   const timerRef = useRef(null);
   const openedAtRef = useRef(null);
 
+  // Start Challenge gate — user must explicitly click to start
+  const [challengeStarted, setChallengeStarted] = useState(false);
+  const [flagFormat, setFlagFormat] = useState(null);
+  const [alreadySolved, setAlreadySolved] = useState(false);
+
   // Panel resize
   const [leftWidth, setLeftWidth]   = useState(50); // percent
   const isDragging = useRef(false);
   const containerRef = useRef(null);
 
-  // ── Load challenge + open session ─────────────────────────────────────────
+  // ── Load challenge metadata (no session yet) ─────────────────────────────
   useEffect(() => {
     if (!slug) return;
     loadChallenge();
@@ -78,11 +83,12 @@ export default function ChallengeSolve() {
 
     try {
       // Find challenge by slug
-      const { getDocs, collection, query, where } = await import("firebase/firestore");
+      const { getDocs, collection, query, where, limit } = await import("firebase/firestore");
       const q = query(
         collection(db, "challenges"),
         where("slug", "==", slug),
-        where("isActive", "==", true)
+        where("isActive", "==", true),
+        where("isDeleted", "==", false)
       );
       const snap = await getDocs(q);
 
@@ -94,22 +100,74 @@ export default function ChallengeSolve() {
 
       const challengeDoc = snap.docs[0];
       const data = challengeDoc.data();
-      setChallengeId(challengeDoc.id);
+      const docId = challengeDoc.id;
+      setChallengeId(docId);
       setChallenge(data);
+      setFlagFormat(data.flagFormat || null);
 
-      // Open session on server — records openTimestamp
-      await openChallengeFn({ challengeId: challengeDoc.id });
-
-      // Start elapsed timer
-      openedAtRef.current = Date.now();
-      timerRef.current = setInterval(() => {
-        setElapsedSeconds(Math.floor((Date.now() - openedAtRef.current) / 1000));
-      }, 1000);
+      // Check if user already solved this challenge — skip start gate if so
+      if (currentUser?.uid) {
+        const submSnap = await getDocs(query(
+          collection(db, "submissions"),
+          where("userId", "==", currentUser.uid),
+          where("challengeId", "==", docId),
+          where("correct", "==", true),
+          limit(1)
+        ));
+        if (!submSnap.empty) {
+          setAlreadySolved(true);
+          setChallengeStarted(true);
+          setResult({ correct: true, alreadySolved: true, eloChange: 0 });
+        }
+      }
 
     } catch (err) {
       setPageError(err.message || "Failed to load challenge.");
     } finally {
       setPageLoading(false);
+    }
+  }
+
+  // ── Start Challenge — opens server session + starts timer ─────────────────
+  async function handleStartChallenge() {
+    if (!challengeId) return;
+
+    // Investigation challenges — hand off to the investigation board
+    if (challenge?.type === "investigation") {
+      navigate(`/investigate/${challengeId}?autostart=1`);
+      return;
+    }
+
+    try {
+      const res = await openChallengeFn({ challengeId });
+      const serverTimestamp = res.data?.openTimestamp || Date.now();
+      openedAtRef.current = serverTimestamp;
+      setChallengeStarted(true);
+
+      // Pick up flagFormat from server response too
+      if (res.data?.challengeMeta?.flagFormat) {
+        setFlagFormat(res.data.challengeMeta.flagFormat);
+      }
+
+      // If already solved, show read-only view immediately
+      if (res.data?.alreadySolved) {
+        setAlreadySolved(true);
+        setResult({ correct: true, alreadySolved: true, eloChange: 0 });
+        return; // don't start timer
+      }
+
+      // Start elapsed timer using server openTimestamp
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - openedAtRef.current) / 1000));
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to start challenge:", err);
+      // Still allow the user to proceed — start a client-side timer as fallback
+      openedAtRef.current = Date.now();
+      setChallengeStarted(true);
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - openedAtRef.current) / 1000));
+      }, 1000);
     }
   }
 
@@ -236,7 +294,62 @@ export default function ChallengeSolve() {
   if (!challenge)  return null;
 
   const diff = DIFFICULTY[challenge.difficulty] || DIFFICULTY.easy;
-  const alreadySolved = result?.correct && result?.alreadySolved;
+
+  // ── Pre-start screen — show challenge overview with "Start Challenge" button ──
+  if (!challengeStarted) {
+    return (
+      <div className="solve-shell">
+        <Navbar />
+        <div className="solve-topbar">
+          <button className="solve-back-btn" onClick={() => navigate("/challenges")}>
+            ← Challenges
+          </button>
+          <div className="solve-topbar-center">
+            <h1 className="solve-title">{challenge.title}</h1>
+            <span
+              className="solve-difficulty-badge"
+              style={{ color: diff.color, background: diff.bg }}
+            >
+              {diff.label}
+            </span>
+          </div>
+          <div className="solve-topbar-right" />
+        </div>
+
+        <div className="solve-start-screen">
+          <div className="solve-start-card">
+            <div className="solve-start-icon">🔍</div>
+            <h2 className="solve-start-heading">{challenge.title}</h2>
+            <div className="solve-start-meta">
+              <span className="solve-start-diff" style={{ color: diff.color }}>
+                {diff.label}
+              </span>
+              <span className="solve-start-sep">•</span>
+              <span className="solve-start-pts">+{challenge.basePoints} ELO</span>
+              {challenge.expectedTime && (
+                <>
+                  <span className="solve-start-sep">•</span>
+                  <span className="solve-start-time">~{formatTime(challenge.expectedTime)}</span>
+                </>
+              )}
+            </div>
+            {flagFormat && (
+              <div className="solve-start-flag-format">
+                <span className="solve-start-flag-label">Flag format:</span>
+                <code className="solve-start-flag-code">{flagFormat}</code>
+              </div>
+            )}
+            <p className="solve-start-desc">
+              Click the button below to start the challenge. Your timer will begin once you start.
+            </p>
+            <button className="solve-start-btn" onClick={handleStartChallenge}>
+              ▶ Start Challenge
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="solve-shell">
@@ -304,21 +417,26 @@ export default function ChallengeSolve() {
               <section className="solve-section">
                 <div className="solve-section-header">
                   <span className="solve-section-label">Attached File</span>
-                  <a
-                    href={challenge.mediaURL}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
                     className="solve-media-download"
                     title="Download original file with metadata intact"
+                    onClick={() => downloadMedia(challenge.mediaURL, challenge.mediaFilename)}
                   >
                     ↓ Download Original
-                  </a>
+                  </button>
                 </div>
                 <div className="solve-media-wrap">
                   {challenge.mediaType === "image" && (
-                    <img src={challenge.mediaURL} alt="Challenge media"
-                      className="solve-media-image" />
+                    <img
+                      src={challenge.mediaURL}
+                      alt="Challenge media"
+                      className="solve-media-image"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.innerHTML = '<div class="solve-media-error">⚠ Image failed to load — use the Download button above.</div>';
+                      }}
+                    />
                   )}
                   {challenge.mediaType === "video" && (
                     <video controls className="solve-media-video">
@@ -338,8 +456,10 @@ export default function ChallengeSolve() {
                         <div className="solve-media-file-name">{challenge.mediaFilename || "attached-file"}</div>
                         <div className="solve-media-file-hint">Download the file to analyse it — metadata preserved.</div>
                       </div>
-                      <a href={challenge.mediaURL} download target="_blank" rel="noopener noreferrer"
-                        className="solve-media-file-btn">Download</a>
+                      <button type="button" className="solve-media-file-btn"
+                        onClick={() => downloadMedia(challenge.mediaURL, challenge.mediaFilename)}>
+                        Download
+                      </button>
                     </div>
                   )}
                 </div>
@@ -419,15 +539,39 @@ export default function ChallengeSolve() {
         <div className="solve-panel solve-panel--right" style={{ width: `${100 - leftWidth}%` }}>
           <div className="solve-panel-inner">
 
-            {/* Already solved — practice mode banner */}
+            {/* ── Already solved — show locked panel ─────────────────── */}
             {result?.correct && result?.alreadySolved && (
-              <div className="solve-practice-banner">
-                ✓ You've already solved this — practice mode (no ELO awarded)
+              <div className="solve-result solve-result--correct">
+                <div className="solve-result-header">
+                  <span className="solve-result-icon">✓</span>
+                  <span className="solve-result-title">Already Solved</span>
+                </div>
+                <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem", margin: "0 0 16px" }}>
+                  You've already completed this challenge. Flag submission is disabled.
+                </p>
+                <div className="solve-result-actions">
+                  <button className="solve-next-btn" onClick={() => navigate("/challenges")}>
+                    Back to challenges →
+                  </button>
+                  <button
+                    className={`solve-writeup-btn ${showWriteup ? "solve-writeup-btn--active" : ""}`}
+                    onClick={() => setShowWriteup(v => !v)}
+                  >
+                    📝 {showWriteup ? "Hide write-up" : "View write-up"}
+                  </button>
+                </div>
+                {showWriteup && challengeId && (
+                  <WriteupEditor
+                    challengeId={challengeId}
+                    challengeTitle={challenge?.title}
+                    onClose={() => setShowWriteup(false)}
+                  />
+                )}
               </div>
             )}
 
             {/* ── Result display (correct) ──────────────────────────────── */}
-            {result?.correct && (
+            {result?.correct && !result?.alreadySolved && (
               <div className="solve-result solve-result--correct">
                 <div className="solve-result-header">
                   <span className="solve-result-icon">✓</span>
@@ -548,7 +692,7 @@ export default function ChallengeSolve() {
                   <input
                     type="text"
                     className="solve-answer-input"
-                    placeholder="Enter your answer..."
+                    placeholder={flagFormat ? `Format: ${flagFormat}` : "Enter your answer..."}
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
                     disabled={submitting || rateLimitSeconds > 0}
@@ -558,6 +702,14 @@ export default function ChallengeSolve() {
                     spellCheck={false}
                   />
                 </div>
+
+                {/* Flag format hint */}
+                {flagFormat && (
+                  <div className="solve-flag-format-hint">
+                    <span className="solve-flag-format-label">Flag format:</span>
+                    <code className="solve-flag-format-code">{flagFormat}</code>
+                  </div>
+                )}
 
                 {/* Rate limit bar */}
                 {rateLimitSeconds > 0 && (
@@ -664,4 +816,27 @@ function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+/**
+ * Download a file from a cross-origin URL (e.g. Cloudinary) by fetching it
+ * as a blob and triggering a browser download. This preserves original metadata
+ * unlike the `download` attribute which is ignored for cross-origin URLs.
+ */
+function downloadMedia(url, filename) {
+  const name = filename || url.split("/").pop()?.split("?")[0] || "download";
+  const isCloudinary = url.includes("cloudinary.com");
+  const isRaw = url.includes("/raw/upload/");
+
+  const dlUrl = isCloudinary && !isRaw
+    ? url.replace("/upload/", "/upload/fl_attachment/")
+    : url;
+
+  const a = document.createElement("a");
+  a.href = dlUrl;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 500);
 }

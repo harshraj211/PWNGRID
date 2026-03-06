@@ -775,6 +775,8 @@
   border: 1px solid rgba(6,182,212,0.15);
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
+  background: none;
+  cursor: pointer;
 }
 .solve-media-download:hover { background: var(--color-accent-bg); }
 
@@ -819,6 +821,143 @@
   padding: 8px 18px; border-radius: var(--radius-md);
   background: var(--color-accent-bg); border: 1px solid rgba(6,182,212,0.15);
   color: var(--color-accent); font-size: 12px; font-weight: 700;
-  text-decoration: none; transition: all var(--transition-fast);
+  cursor: pointer; transition: all var(--transition-fast);
 }
 .solve-media-file-btn:hover { background: var(--color-accent); color: var(--color-text-inverse); }
+
+.solve-media-error {
+  padding: 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* ── Start Challenge Screen ─────────────────────────────────────────────── */
+.solve-start-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.solve-start-card {
+  max-width: 480px;
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 48px 40px;
+  text-align: center;
+}
+
+.solve-start-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.solve-start-heading {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 12px;
+}
+
+.solve-start-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+}
+
+.solve-start-diff { font-weight: 700; }
+.solve-start-sep { opacity: 0.3; }
+
+.solve-start-flag-format {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--color-accent-bg);
+  border: 1px solid rgba(6,182,212,0.15);
+  border-radius: var(--radius-md);
+  padding: 8px 16px;
+  margin-bottom: 16px;
+  font-size: var(--text-sm);
+}
+
+.solve-start-flag-label {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.solve-start-flag-code {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.solve-start-desc {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.solve-start-btn {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 12px 32px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.solve-start-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+/* ── Flag Format Hint (answer form) ─────────────────────────────────────── */
+.solve-flag-format-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-accent-bg);
+  border: 1px solid rgba(6,182,212,0.1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+
+.solve-flag-format-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.solve-flag-format-code {
+  font-size: 13px;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
