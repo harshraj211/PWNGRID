@@ -233,7 +233,7 @@ export default function Leaderboard() {
         {/* ── Not in top 100 note ──────────────────────────────────────── */}
         {!loading && !myEntry && currentUser && (
           <div className="lb-not-ranked">
-            You're not in the top 100 yet — keep solving to climb the ranks!
+            You&apos;re not in the top 100 yet — keep solving to climb the ranks!
           </div>
         )}
 

@@ -188,7 +188,7 @@ export default function NotificationBell() {
             <div style={{ padding: "20px 16px", textAlign: "center" }}>
               <div style={{ fontSize: 22, marginBottom: 8 }}>ðŸŽ‰</div>
               <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                You're all caught up!
+                You&apos;re all caught up!
               </div>
               {readCount > 0 && (
                 <button

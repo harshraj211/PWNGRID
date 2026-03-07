@@ -57,7 +57,7 @@ export default function ForgotPassword() {
           <>
             <h1 className="auth-title">Reset password</h1>
             <p className="auth-subtitle">
-              Enter your email and we'll send a reset link.
+              Enter your email and we&apos;ll send a reset link.
             </p>
 
             {error && (
@@ -103,7 +103,7 @@ export default function ForgotPassword() {
               If an account exists for <strong>{email}</strong>, a password reset link has been sent.
             </p>
             <p className="auth-verify-instruction">
-              Check your spam folder if you don't see it within a few minutes.
+              Check your spam folder if you don&apos;t see it within a few minutes.
             </p>
           </>
         )}

@@ -118,7 +118,7 @@ export default function Contests() {
         if (partSnap.exists()) ids.add(contestDoc.id);
       }));
       setRegistered(ids);
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   async function handleRegister(contestId, contest) {

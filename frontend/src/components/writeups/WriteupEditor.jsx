@@ -37,7 +37,7 @@ export default function WriteupEditor({ challengeId, challengeTitle, onClose }) 
         setBlocks(d.blocks || [{ type: "text", content: "" }]);
         setIsPublic(d.isPublic !== false);
       }
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
     setLoading(false);
   }
 

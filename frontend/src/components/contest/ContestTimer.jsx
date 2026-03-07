@@ -1,7 +1,9 @@
-export const ContestTimer = ({ startTime, endTime }) => {
-  const [timeLeft, setTimeLeft] = React.useState('')
+import { useEffect, useState } from 'react'
 
-  React.useEffect(() => {
+export const ContestTimer = ({ startTime, endTime }) => {
+  const [timeLeft, setTimeLeft] = useState('')
+
+  useEffect(() => {
     const timer = setInterval(() => {
       const now = new Date()
       const end = new Date(endTime)

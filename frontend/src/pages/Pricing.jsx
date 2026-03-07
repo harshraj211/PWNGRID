@@ -144,7 +144,7 @@ export default function Pricing() {
         <div className="pricing-page">
           <div className="pricing-already-pro">
             <div className="pricing-pro-icon">✦</div>
-            <h1 className="pricing-already-title">You're on Pro</h1>
+            <h1 className="pricing-already-title">You&apos;re on Pro</h1>
             <p className="pricing-already-sub">
               You have full access to all PwnGrid features.
             </p>

@@ -297,7 +297,7 @@ export default function ContestSolve() {
       {/* ── Not registered banner ────────────────────────────────────── */}
       {notRegistered && (
         <div className="cs-not-registered">
-          You're not registered for this contest.{" "}
+          You&apos;re not registered for this contest.{" "}
           {!isPast && <Link to="/contests" className="cs-reg-link">Register →</Link>}
         </div>
       )}

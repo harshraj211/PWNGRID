@@ -134,7 +134,7 @@ export default function AdminDashboard() {
       </section>
 
       <section className="admin-section">
-        <h2 className="admin-section-title">Today's Activity</h2>
+        <h2 className="admin-section-title">Today&apos;s Activity</h2>
         <div className="admin-stats-grid admin-stats-grid--3">
           <AdminStat label="Submissions"  value={submissions?.totalToday} />
           <AdminStat label="Correct"      value={submissions?.correctToday} accent="accent" />

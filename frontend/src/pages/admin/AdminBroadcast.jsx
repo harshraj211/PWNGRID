@@ -227,10 +227,10 @@ export default function AdminBroadcast() {
           <div className="admin-broadcast-tips">
             <div className="admin-field-label" style={{ marginBottom: 8 }}>Tips</div>
             <ul className="admin-broadcast-tips-list">
-              <li>Keep titles under 80 chars so they don't get truncated on mobile.</li>
+              <li>Keep titles under 80 chars so they don&apos;t get truncated on mobile.</li>
               <li>Use the link field to direct users to contests, pricing, or challenges.</li>
               <li>Notifications appear in the bell icon in the top nav bar.</li>
-              <li>Use "Pro users" audience for upgrade offers, "Free users" for conversion campaigns.</li>
+              <li>Use &quot;Pro users&quot; audience for upgrade offers, &quot;Free users&quot; for conversion campaigns.</li>
             </ul>
           </div>
         </div>

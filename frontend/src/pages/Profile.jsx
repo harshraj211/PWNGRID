@@ -83,7 +83,7 @@ export default function Profile() {
       const followId = `${currentUser.uid}_${targetUid}`;
       const snap = await getDoc(doc(db, "follows", followId));
       setIsFollowing(snap.exists());
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   async function handleFollow() {
@@ -195,11 +195,11 @@ export default function Profile() {
             difficulty = cSnap.data().difficulty;
             slug = cSnap.data().slug;
           }
-        } catch {}
+        } catch { /* ignore non-critical errors */ }
         solves.push({ id: docSnap.id, ...sub, title, difficulty, slug });
       }
       setRecentSolves(solves);
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   async function loadHeatmap(uid) {
@@ -207,7 +207,7 @@ export default function Profile() {
       const year = new Date().getUTCFullYear().toString();
       const snap = await getDoc(doc(db, "heatmap", uid, "years", year));
       if (snap.exists()) setHeatmapData(snap.data());
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   async function loadBadges(uid) {
@@ -219,7 +219,7 @@ export default function Profile() {
       );
       const snap = await getDocs(q);
       setBadges(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   if (notFound) {

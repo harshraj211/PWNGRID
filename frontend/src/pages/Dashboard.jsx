@@ -71,7 +71,7 @@ export default function Dashboard() {
             challengeSlug  = cSnap.data().slug;
             difficulty     = cSnap.data().difficulty;
           }
-        } catch {}
+        } catch { /* ignore non-critical errors */ }
         items.push({ id: docSnap.id, ...sub, challengeTitle, challengeSlug, difficulty });
       }
       setRecentActivity(items);
@@ -88,7 +88,7 @@ export default function Dashboard() {
       const year = new Date().getUTCFullYear().toString();
       const snap = await getDoc(doc(db, "heatmap", currentUser.uid, "years", year));
       if (snap.exists()) setHeatmapData(snap.data());
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   async function loadWeeklyChallenge() {
@@ -99,7 +99,7 @@ export default function Dashboard() {
       if (!challengeId) return;
       const cSnap = await getDoc(doc(db, "challenges", challengeId));
       if (cSnap.exists()) setWeeklyChallenge({ id: cSnap.id, ...cSnap.data() });
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
   }
 
   if (!userProfile) {

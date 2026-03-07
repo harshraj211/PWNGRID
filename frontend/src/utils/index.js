@@ -7,9 +7,8 @@ export const formatDate = (date) => {
 }
 
 export const gravatarUrl = (email) => {
-  const crypto = require('crypto')
-  const hash = crypto.createHash('md5').update(email).digest('hex')
-  return `https://www.gravatar.com/avatar/${hash}`
+  const hash = email.trim().toLowerCase()
+  return `https://www.gravatar.com/avatar/${hash}?d=identicon`
 }
 
 export const eloColor = (elo) => {

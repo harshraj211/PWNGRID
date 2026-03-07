@@ -547,7 +547,7 @@ export default function ChallengeSolve() {
                   <span className="solve-result-title">Already Solved</span>
                 </div>
                 <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem", margin: "0 0 16px" }}>
-                  You've already completed this challenge. Flag submission is disabled.
+                  You&apos;ve already completed this challenge. Flag submission is disabled.
                 </p>
                 <div className="solve-result-actions">
                   <button className="solve-next-btn" onClick={() => navigate("/challenges")}>

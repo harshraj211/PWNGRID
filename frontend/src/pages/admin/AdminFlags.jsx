@@ -60,11 +60,11 @@ export default function AdminFlags() {
         try {
           const snap1 = await getDoc(doc(db, "users", flag.reportedUserId));
           if (snap1.exists()) reportedUsername = snap1.data().username || reportedUsername;
-        } catch {}
+        } catch { /* ignore non-critical errors */ }
         try {
           const snap2 = await getDoc(doc(db, "users", flag.reportedByUserId));
           if (snap2.exists()) reportedByUsername = snap2.data().username || reportedByUsername;
-        } catch {}
+        } catch { /* ignore non-critical errors */ }
 
         items.push({
           id: flagDoc.id,

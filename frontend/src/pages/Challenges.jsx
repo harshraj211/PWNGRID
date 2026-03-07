@@ -76,7 +76,7 @@ export default function Challenges() {
       try {
         const snap = await getDoc(doc(db, "config", "weeklyFreeChallenge"));
         if (snap.exists()) setWeeklyFreeHardId(snap.data().challengeId || null);
-      } catch {}
+      } catch { /* ignore non-critical errors */ }
     }
     loadWeeklyFree();
   }, []);
@@ -98,7 +98,7 @@ export default function Challenges() {
       const snap = await getDocs(q);
       const ids = new Set(snap.docs.map(d => d.data().challengeId));
       setSolvedIds(ids);
-    } catch {}
+    } catch { /* ignore non-critical errors */ }
     setSolvedLoading(false);
   }
 
