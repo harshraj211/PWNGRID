@@ -7,8 +7,19 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 28px 72px;
+  box-sizing: border-box;
   min-height: calc(100vh - 130px);
   animation: fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (max-width: 768px) {
+  .contests-page {
+    padding: 20px 16px 48px;
+  }
 }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }

@@ -131,7 +131,7 @@ export default function InvestigationChallenge() {
             collection(db, "submissions"),
             where("userId", "==", currentUser.uid),
             where("challengeId", "==", snap.id),
-            where("correct", "==", true),
+            where("isCorrect", "==", true),
             limit(1)
           ));
           if (!submSnap.empty) {

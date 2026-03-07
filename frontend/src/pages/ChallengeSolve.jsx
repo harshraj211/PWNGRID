@@ -111,7 +111,7 @@ export default function ChallengeSolve() {
           collection(db, "submissions"),
           where("userId", "==", currentUser.uid),
           where("challengeId", "==", docId),
-          where("correct", "==", true),
+          where("isCorrect", "==", true),
           limit(1)
         ));
         if (!submSnap.empty) {

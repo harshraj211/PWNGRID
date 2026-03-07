@@ -2,7 +2,7 @@
  * Register.jsx — v2 with Google Sign-In
  * File location: frontend/src/pages/Register.jsx
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./Auth.css";
@@ -24,8 +24,13 @@ function getPasswordStrength(p) {
 }
 
 export default function Register() {
-  const { register, loginWithGoogle } = useAuth();
+  const { register, loginWithGoogle, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Redirect if already signed in (handles Google redirect return)
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) navigate("/dashboard", { replace: true });
+  }, [isAuthenticated, authLoading, navigate]);
 
   const [username, setUsername] = useState("");
   const [email, setEmail]       = useState("");
@@ -36,6 +41,8 @@ export default function Register() {
   const [gLoading, setGLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const strength = getPasswordStrength(password);
+
+  if (!authLoading && isAuthenticated) return null;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -60,13 +67,12 @@ export default function Register() {
     setError("");
     setGLoading(true);
     try {
-      await loginWithGoogle();
-      navigate("/dashboard");
+      await loginWithGoogle(); // triggers redirect — page navigates away
     } catch (err) {
-      if (err.code !== "auth/popup-closed-by-user") setError(getFriendlyError(err.code));
-    } finally {
+      setError(getFriendlyError(err.code));
       setGLoading(false);
     }
+    // setGLoading(false) intentionally skipped — page will redirect away
   }
 
   return (

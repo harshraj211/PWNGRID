@@ -49,6 +49,13 @@ export default defineConfig(({ mode }) => {
       open:        false, // don't auto-open browser
       host:        true,  // expose to local network (useful for mobile testing)
 
+      // Allow Firebase Google Sign-In popup to communicate back to the parent
+      // window. Vite's default COOP: same-origin blocks the popup channel.
+      headers: {
+        "Cross-Origin-Opener-Policy":   "same-origin-allow-popups",
+        "Cross-Origin-Embedder-Policy": "unsafe-none",
+      },
+
       // Proxy Firebase emulator endpoints to avoid CORS issues in dev.
       // Only active when running `vite` (not `vite build`).
       proxy: env.VITE_USE_EMULATOR === "true"

@@ -421,7 +421,7 @@ export default function Profile() {
               <div className="profile-card-header">
                 <span className="profile-card-title">Solved by Difficulty</span>
               </div>
-              <DiffBreakdown solves={recentSolves} />
+              <DiffBreakdown counts={profile.solvedByDifficulty} totalSolved={totalSolved} />
             </div>
 
             {/* Streak calendar */}
@@ -606,10 +606,13 @@ function BadgesTab({ badges }) {
   );
 }
 
-function DiffBreakdown({ solves }) {
-  const counts = { easy: 0, medium: 0, hard: 0 };
-  solves.forEach(s => { if (counts[s.difficulty] !== undefined) counts[s.difficulty]++; });
-  const total = solves.length || 1;
+function DiffBreakdown({ counts = {}, totalSolved = 0 }) {
+  const resolved = {
+    easy:   counts?.easy   || 0,
+    medium: counts?.medium || 0,
+    hard:   counts?.hard   || 0,
+  };
+  const total = Math.max(totalSolved, resolved.easy + resolved.medium + resolved.hard, 1);
 
   return (
     <div className="profile-diff-breakdown">
@@ -622,12 +625,12 @@ function DiffBreakdown({ solves }) {
             <div
               className="profile-diff-bar"
               style={{
-                width: `${(counts[d] / total) * 100}%`,
+                width: `${(resolved[d] / total) * 100}%`,
                 background: DIFF_COLOR[d],
               }}
             />
           </div>
-          <span className="profile-diff-count">{counts[d]}</span>
+          <span className="profile-diff-count">{resolved[d]}</span>
         </div>
       ))}
     </div>

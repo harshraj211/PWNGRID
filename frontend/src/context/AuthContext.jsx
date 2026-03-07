@@ -17,12 +17,13 @@ import {
   sendEmailVerification,
   reload,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   updateProfile,
 } from "firebase/auth";
 import {
   doc, onSnapshot, setDoc, getDoc,
-  serverTimestamp,
+  serverTimestamp, collection, query, where, limit, getDocs,
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from "../firebase/config";
@@ -144,6 +145,23 @@ export function AuthProvider({ children }) {
   const [claimsReady, setClaimsReady]       = useState(false);
   const profileUnsubRef = useRef(null);
 
+  // Handle Google redirect result on page load
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result?.user) {
+          await ensureUserProfile(result.user);
+        }
+      })
+      .catch((err) => {
+        // ignore popup-closed or cancelled redirects
+        if (err.code !== "auth/cancelled-popup-request" &&
+            err.code !== "auth/popup-closed-by-user") {
+          console.error("getRedirectResult error:", err);
+        }
+      });
+  }, []);
+
   useEffect(() => {
     const unsubAuth = onIdTokenChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -203,10 +221,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const loginWithGoogle = useCallback(async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    // Auto-create profile for new Google users
-    await ensureUserProfile(result.user);
-    return result;
+    // signInWithRedirect avoids COOP/popup issues in all environments
+    await signInWithRedirect(auth, googleProvider);
+    // Navigation will happen after redirect returns — no return value needed
   }, []);
 
   const register = useCallback(async (email, password, username) => {
