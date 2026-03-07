@@ -1,20 +1,6 @@
 <div align="center">
 
-<br/>
-```
-<br/>
-```
-██████╗ ██╗    ██╗███╗   ██╗ ██████╗ ██████╗ ██╗██████╗ 
-██╔══██╗██║    ██║████╗  ██║██╔════╝ ██╔══██╗██║██╔══██╗
-██████╔╝██║ █╗ ██║██╔██╗ ██║██║  ███╗██████╔╝██║██║  ██║
-██╔═══╝ ██║███╗██║██║╚██╗██║██║   ██║██╔══██╗██║██║  ██║
-██║     ╚███╔███╔╝██║ ╚████║╚██████╔╝██║  ██║██║██████╔╝
-╚═╝      ╚══╝╚══╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═╝╚═╝╚═════╝ 
-```
-
-**The competitive cybersecurity training platform for professionals.**
-
-<br/>
+<h1>⚡ PWNGRID</h1>
 
 [![Status](https://img.shields.io/badge/Status-Active-00ff88?style=for-the-badge)](https://github.com/harshraj211/pwngrid)
 [![Frontend](https://img.shields.io/badge/React_+_Vite-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://vitejs.dev)
